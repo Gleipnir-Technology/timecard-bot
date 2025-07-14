@@ -1,0 +1,21 @@
+[tool.poetry]
+name = "timecarder"
+version = "0.1.0"
+description = ""
+authors = ["Benjamin Sperry <benjamin@gleipnir.technology>", "Eli Ribble <eli@gliepnir.technology"]
+# license = "BSD"
+packages = [
+  { include = "timecarder" }
+]
+
+[project]
+dependencies = [ "authlib", "Flask", "simplematrixbotlib" ]
+name = "timecarder"
+requires-python = ">=3.10"
+
+[tool.poetry.dependencies]
+python = "^3.10"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

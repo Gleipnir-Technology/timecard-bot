@@ -7,14 +7,23 @@ import simplematrixbotlib as botlib
 
 PREFIX = "!"
 
+def get_token() -> str:
+	token = os.environ.get("BOT_TOKEN")
+	if token is None:
+		try:
+			with open("token.txt", "r") as f:
+				token = f.read().strip()
+				return token
+		except OSError as e:
+			print(f"Failed to read token: {e}")
+		print("You must supply a BOT_TOKEN via environment variable or via token.txt")
+		sys.exit(1)
+	
 def main() -> None:
 	header = {"alg": "HS256"}
 	payload = {"sub": "timecarder"}
 
-	token = os.environ.get("BOT_TOKEN")
-	if token is None:
-		print("You must supply a BOT_TOKEN via environment variable")
-		sys.exit(1)
+	token = get_token()
 	print(f"Token: {token}")
 	creds = botlib.Creds(
 		homeserver="https://matrix.gleipnir.technology",

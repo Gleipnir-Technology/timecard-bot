@@ -2,6 +2,16 @@
 
 A Matrix bot for doing timecard stuff.
 
+## Building
+
+On NixOS:
+
+```
+nix build .
+```
+
+This will produce files in `result/`, including `result/bin/timecardbot`
+
 ## Configuring
 
 You must provide an environment variable `BOT_TOKEN` which contains an authentication token or a file `token.txt` which contains the token.
@@ -12,14 +22,6 @@ On NixOS:
 
 ```
 nix develop
-```
-
-## Building
-
-On NixOS:
-
-```
-nix build
 ```
 
 ## Deployment

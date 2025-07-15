@@ -1,25 +1,18 @@
-[build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
-
-[project]
-dependencies = [ "authlib", "Flask", "simplematrixbotlib" ]
-name = "timecarder"
-requires-python = ">=3.10"
-
-[project.scripts]
-timecardbot = 'bot:main'
-
 [tool.poetry]
 name = "timecarder"
 version = "0.1.0"
-description = ""
-authors = ["Benjamin Sperry <benjamin@gleipnir.technology>", "Eli Ribble <eli@gliepnir.technology"]
-# license = "BSD"
-packages = [
-  { include = "timecarder" }
-]
+description = "a bot for recording timecard stuff"
+authors = ["Eli Ribble <eli@gleipnir.technology>", "William Ribble"]
+license = "MIT"
+readme = "README.md"
 
 [tool.poetry.dependencies]
-python = "^3.10"
+python = "^3.13"
+
+[tool.poetry.scripts]
+timecardbot = "timecarder.test:run"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
 

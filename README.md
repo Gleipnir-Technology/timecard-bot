@@ -21,3 +21,24 @@ On NixOS:
 ```
 nix build
 ```
+
+## Deployment
+
+```
+{ pkgs, lib, config, ... }:                                                                                    
+let                                                                                                                     
+        timecardBotSrc = pkgs.fetchFromGitHub {                                                                                            
+                owner  = "Gleipnir-Technology";                                                                                        
+                repo   = "timecard-bot";                                                                                                                              
+                rev    = "7996c5cf18e2e12a5ea347e364a86845472df8dc";                                                           
+                sha256 = "bplL0DphBwQ6xvj+t1YmDzqhbUkHzkep5enBMFjYV9w=";                                                    
+        };                                                                                                                  
+        timecardBotFlake = (import timecardBotSrc);                                                                             
+        timecardBotPackage = timecardBotFlake.packages.${pkgs.system}.default;                                 
+in                                                                                                         
+{                                                                                                                                        
+        environment.systemPackages = with pkgs; [                                                                                                     
+                timecardBotPackage                                                                                
+        ];                                                                                                                
+}
+```

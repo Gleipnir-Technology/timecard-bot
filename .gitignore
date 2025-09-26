@@ -1,4 +1,5 @@
+__pycache__
 dist/
-result/
+result
 session.txt
 token.txt

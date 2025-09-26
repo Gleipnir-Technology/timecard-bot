@@ -24,6 +24,10 @@ On NixOS:
 nix develop
 ```
 
+### Testing
+
+After `nix develop` run [pytest](https://docs.pytest.org/en/latest/) with `pytest`
+
 ## Deployment
 
 ```

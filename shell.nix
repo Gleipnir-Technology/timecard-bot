@@ -1,8 +1,11 @@
 with import <nixpkgs> {};
-with pkgs.python3Packages;
-
-buildPythonPackage rec {
-  name = "timecarder";
-  src = ./timecarder;
-  propagatedBuildInputs = [ pkgs.python312Packages.matrix-nio ];
+let
+  timecarder = pkgs.python312Packages.buildPythonPackage rec {
+    name = "timecarder";
+    propagatedBuildInputs = [ pkgs.python312Packages.matrix-nio ];
+    src = ./timecarder;
+  };
+in
+mkShell {
+  buildInputs = [ lefthook timecarder ];
 }

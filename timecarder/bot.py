@@ -3,7 +3,6 @@ import csv
 from datetime import datetime, timezone
 from nio import AsyncClient, MatrixRoom, RoomMessageText
 import os
-from typing import Optional
 import uuid
 
 CSV_FILE = "sessions.csv"
@@ -66,19 +65,20 @@ class MatrixBot:
         # Use first word after ! as command
         command = body[1:].split()[0].upper()
         args = body.split()[1:]
+        room_id = room.room_id
 
         print(f"[COMMAND RECEIVED] {command} args={args}")
 
         if command == "START":
             if self.state == "RUNNING":
-                await self.send_message("Calm down! Already running.")
+                await self.send_message("Calm down! Already running.", room_id)
             else:
                 self.state = "RUNNING"
                 self.start_time = datetime.now(timezone.utc)
                 self.session_id = str(uuid.uuid4())
                 self.log_csv("STARTED")
                 await self.send_message(
-                    f"Alright, off we go! Started at {self.start_time}"
+                    f"Alright, off we go! Started at {self.start_time}", room_id
                 )
 
         elif command == "STOP":
@@ -87,11 +87,11 @@ class MatrixBot:
                 self.state = "STOPPED"
                 self.log_csv("STOPPED")
                 await self.send_message(
-                    f"Stopped! Worked for {format_elapsed(elapsed)}. Bravo!"
+                    f"Stopped! Worked for {format_elapsed(elapsed)}. Bravo!", room_id
                 )
             else:
                 await self.send_message(
-                    "Uhh… you weren't running. Try !help if confused."
+                    "Uhh… you weren't running. Try !help if confused.", room_id
                 )
 
         elif command == "PAUSE":
@@ -99,10 +99,12 @@ class MatrixBot:
                 elapsed = datetime.now(timezone.utc) - self.start_time
                 self.state = "PAUSED"
                 self.log_csv("PAUSED")
-                await self.send_message(f"Paused. Worked for {format_elapsed(elapsed)}")
+                await self.send_message(
+                    f"Paused. Worked for {format_elapsed(elapsed)}", room_id
+                )
             else:
                 await self.send_message(
-                    "Nothing to pause… are you trying to pause the universe?"
+                    "Nothing to pause… are you trying to pause the universe?", room_id
                 )
 
         elif command == "UNPAUSE":
@@ -110,23 +112,28 @@ class MatrixBot:
                 self.state = "RUNNING"
                 self.start_time = datetime.now(timezone.utc)
                 self.log_csv("UNPAUSED")
-                await self.send_message("Resumed work. Back at it!")
+                await self.send_message("Resumed work. Back at it!", room_id)
             else:
-                await self.send_message("Not paused. Are you making things up now?")
+                await self.send_message(
+                    "Not paused. Are you making things up now?", room_id
+                )
 
         elif command == "MEMO":
             self.memo = " ".join(args)
             self.log_csv("MEMO")
-            await self.send_message(f"Memo saved: {self.memo} (don't lose it!)")
+            await self.send_message(
+                f"Memo saved: {self.memo} (don't lose it!)", room_id
+            )
 
         elif command == "STATUS":
-            await self.send_message(f"State: {self.state}, memo: {self.memo}")
+            await self.send_message(f"State: {self.state}, memo: {self.memo}", room_id)
 
         elif command == "FUSALLY":
             await self.send_message(
                 "I AM YOU GOD JACK\n"
                 "F YOU SALLY\n"
-                "AWSOME MUSIC, and this bot is dead"
+                "AWSOME MUSIC, and this bot is dead",
+                room_id,
             )
 
         elif command == "HELP":
@@ -141,7 +148,7 @@ class MatrixBot:
                 "!memo <text> – Save a memo.\n"
                 "!status – Check your current state and memo.\n"
                 "Try typing something wrong for bonus sass!",
-                room_id=room.room_id,
+                room.room_id,
             )
 
         # MANUAL COMMANDS
@@ -155,11 +162,13 @@ class MatrixBot:
                     self.state = "RUNNING"
                     self.session_id = str(uuid.uuid4())
                     self.log_csv("MANUALSTART")
-                    await self.send_message(f"Manual start at {manual_time}")
+                    await self.send_message(f"Manual start at {manual_time}", room_id)
                 except Exception as e:
-                    await self.send_message(f"Invalid time format: {e}")
+                    await self.send_message(f"Invalid time format: {e}", room_id)
             else:
-                await self.send_message("Usage: !manualstart YYYY-MM-DDTHH:MM:SS")
+                await self.send_message(
+                    "Usage: !manualstart YYYY-MM-DDTHH:MM:SS", room_id
+                )
 
         elif command == "MANUALSTOP":
             if args:
@@ -172,12 +181,15 @@ class MatrixBot:
                         self.state = "STOPPED"
                         self.log_csv("MANUALSTOP")
                         await self.send_message(
-                            f"Manual stop! Worked for {format_elapsed(elapsed)}"
+                            f"Manual stop! Worked for {format_elapsed(elapsed)}",
+                            room_id,
                         )
                 except Exception as e:
-                    await self.send_message(f"Invalid time format: {e}")
+                    await self.send_message(f"Invalid time format: {e}", room_id)
             else:
-                await self.send_message("Usage: !manualstop YYYY-MM-DDTHH:MM:SS")
+                await self.send_message(
+                    "Usage: !manualstop YYYY-MM-DDTHH:MM:SS", room_id
+                )
 
         elif command == "MANUALPAUSE":
             if args:
@@ -190,12 +202,15 @@ class MatrixBot:
                         self.state = "PAUSED"
                         self.log_csv("MANUALPAUSE")
                         await self.send_message(
-                            f"Manually paused! Worked for {format_elapsed(elapsed)}"
+                            f"Manually paused! Worked for {format_elapsed(elapsed)}",
+                            room_id,
                         )
                 except Exception as e:
-                    await self.send_message(f"Invalid time format: {e}")
+                    await self.send_message(f"Invalid time format: {e}", room_id)
             else:
-                await self.send_message("Usage: !manualpause YYYY-MM-DDTHH:MM:SS")
+                await self.send_message(
+                    "Usage: !manualpause YYYY-MM-DDTHH:MM:SS", room_id
+                )
 
         elif command == "MANUALUNPAUSE":
             if args:
@@ -207,21 +222,28 @@ class MatrixBot:
                         self.start_time = manual_time
                         self.state = "RUNNING"
                         self.log_csv("MANUALUNPAUSE")
-                        await self.send_message(f"Manually resumed at {manual_time}")
+                        await self.send_message(
+                            f"Manually resumed at {manual_time}", room_id
+                        )
                     else:
-                        await self.send_message("Not paused, cannot unpause manually.")
+                        await self.send_message(
+                            "Not paused, cannot unpause manually.", room_id
+                        )
                 except Exception as e:
-                    await self.send_message(f"Invalid time format: {e}")
+                    await self.send_message(f"Invalid time format: {e}", room_id)
             else:
-                await self.send_message("Usage: !manualunpause YYYY-MM-DDTHH:MM:SS")
+                await self.send_message(
+                    "Usage: !manualunpause YYYY-MM-DDTHH:MM:SS", room_id
+                )
 
         else:
             # only triggers if no command matched
             await self.send_message(
-                "That sadly is not a command. Use !HELP if you… need help. I really hope I don't need to elaborate what !HELP does."
+                "That sadly is not a command. Use !HELP if you… need help. I really hope I don't need to elaborate what !HELP does.",
+                room_id,
             )
 
-    async def send_message(self, message, room_id: Optional[MatrixRoom] = None):
+    async def send_message(self, message, room_id: str):
         room_id = room_id or self.room_id
         await self.client.room_send(
             room_id=room_id,
@@ -233,10 +255,10 @@ class MatrixBot:
     async def reminders(self):
         while True:
             await asyncio.sleep(300)
-            if self.state == "RUNNING":
-                await self.send_message(
-                    "Hey! Are you ready to stop working yet, or are we just playing pretend?"
-                )
+            # if self.state == "RUNNING":
+            # await self.send_message(
+            # "Hey! Are you ready to stop working yet, or are we just playing pretend?"
+            # )
 
 
 async def run():
@@ -253,7 +275,8 @@ async def run():
 
 
 def main():
-	asyncio.run(run())
+    asyncio.run(run())
+
 
 if __name__ == "__main__":
     main()

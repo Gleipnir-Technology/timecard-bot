@@ -31,10 +31,18 @@
           # Returns an attribute set that can be passed to `buildPythonPackage`.
           attrs = project.renderers.buildPythonPackage { inherit python; };
         in
-        # Pass attributes to buildPythonPackage.
-        # Here is a good spot to add on any missing or custom attributes.
-        python.pkgs.buildPythonPackage (attrs // {
-          env.CUSTOM_ENVVAR = "hello";
-        });
+          # Pass attributes to buildPythonPackage.
+          # Here is a good spot to add on any missing or custom attributes.
+          python.pkgs.buildPythonPackage (attrs // {
+            env.CUSTOM_ENVVAR = "hello";
+          });
+	
+      devShell.x86_64-linux = pkgs.mkShell {
+        buildInputs = with pkgs; [
+	  black
+	  lefthook
+	  ruff
+	];
+      };
     };
 }

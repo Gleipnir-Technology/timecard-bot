@@ -41,6 +41,7 @@
 				buildInputs = with pkgs; [
 					black
 					lefthook
+					pyright
 					python313Packages.pytest
 					ruff
 				] ++ (project.pythonBuildInputs or [python313Packages.matrix-nio]);

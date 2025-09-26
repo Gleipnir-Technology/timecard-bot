@@ -24,6 +24,7 @@
             lefthook
             (mkPoetryEnv { projectDir = self; })
             poetry
+            ruff
           ];
         };
       });

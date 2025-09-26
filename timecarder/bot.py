@@ -1,265 +1,260 @@
+import asyncio
+import csv
+from datetime import datetime, timezone
+from nio import AsyncClient, MatrixRoom, RoomMessageText
 import os
-import sys
-import time
-from datetime import datetime
+from typing import Optional
+import uuid
 
-from authlib.jose import jwt
-import simplematrixbotlib as botlib
-
-PREFIX = "!"
-
-# === Globals for time tracking ===
-StartTime = 0
-ElapsedTime = 0
-
-# === Base folder for logs ===
-BASE_DIR = r"C:\Users\willi\Documents\MatrixBot"
+CSV_FILE = "sessions.csv"
 
 
-def get_token() -> str:
-    token = os.environ.get("BOT_TOKEN")
-    if token is None:
+def format_elapsed(delta):
+    total_seconds = int(delta.total_seconds())
+    minutes, seconds = divmod(total_seconds, 60)
+    return f"{minutes}m {seconds}s"
+
+
+class MatrixBot:
+    def __init__(self, homeserver, access_token, user_id, room_id):
+        self.client = AsyncClient(homeserver, user_id)
+        self.client.access_token = access_token
+        self.room_id = room_id
+
+        self.state = "IDLE"
+        self.start_time = None
+        self.memo = ""
+        self.session_id = None
+
+        self.client.add_event_callback(self.message_callback, RoomMessageText)
+
+        # Ensure CSV exists
         try:
-            with open("token.txt", "r") as f:
-                token = f.read().strip()
-                return token
-        except OSError as e:
-            print(f"Failed to read token: {e}")
-        print("You must supply a BOT_TOKEN via environment variable or via token.txt")
-        sys.exit(1)
-    return token
+            with open(CSV_FILE, "x", newline="") as f:
+                writer = csv.writer(f)
+                writer.writerow(["session_id", "timestamp", "state", "memo"])
+        except FileExistsError:
+            pass
 
+    def log_csv(self, state):
+        with open(CSV_FILE, "a", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow(
+                [
+                    self.session_id,
+                    datetime.now(timezone.utc).isoformat(),
+                    state,
+                    self.memo,
+                ]
+            )
+        print(f"[CSV LOG] {state} at {datetime.now(timezone.utc)}")  # debug print
 
-def sanitize_filename(name: str) -> str:
-    return "".join(c if c not in r'<>:"/\\|?*' else "_" for c in name)
+    async def message_callback(self, room: MatrixRoom, event: RoomMessageText):
+        # Only listen in the right room
+        # if room.room_id != self.room_id:
+        # print(f"Ignoring message from {room.room_id}")
+        # return
 
-
-def save_worklog(user_tag: str, memo: str, hours_worked: float) -> None:
-    safe_tag = sanitize_filename(user_tag)
-    date_str = datetime.now().strftime("%Y-%m-%d")
-    folder_name = f"{safe_tag}_{date_str}"
-    folder_path = os.path.join(BASE_DIR, folder_name)
-
-    os.makedirs(folder_path, exist_ok=True)
-
-    file_path = os.path.join(folder_path, "worklog.txt")
-    text = f"Hours worked: {hours_worked:.2f}\nMemo: {memo}\n---\n"
-
-    with open(file_path, "a", encoding="utf-8") as f:
-        f.write(text)
-
-
-def main() -> None:
-    global StartTime, ElapsedTime
-
-    token = get_token()
-    print(f"Token: {token}")
-    creds = botlib.Creds(
-        homeserver="https://matrix.gleipnir.technology",
-        username="timecarder",
-        access_token=token,
-        session_stored_file="session.txt",
-    )
-
-    bot = botlib.Bot(creds)
-
-    @bot.listener.on_message_event
-    async def command_handler(room, message):
-        global StartTime, ElapsedTime
-
-        match = botlib.MessageMatch(room, message, bot, PREFIX)
-        sender = message.sender
-
-        if not match.is_not_from_this_bot() or not match.prefix():
+        # Ignore bot's own messages
+        if event.sender == self.client.user:
             return
 
-        if match.command("echo"):
-            await bot.api.send_text_message(
-                room.room_id, " ".join(arg for arg in match.args())
-            )
+        body = event.body.strip()
+        if not body.startswith("!"):
+            return
 
-        elif match.command("test"):
-            await bot.api.send_text_message(
-                room.room_id, "🤖 I am alive! And fabulous."
-            )
+        # Use first word after ! as command
+        command = body[1:].split()[0].upper()
+        args = body.split()[1:]
 
-        elif match.command("whoami"):
-            await bot.api.send_text_message(
-                room.room_id, f"You're {sender}, obviously. 🙄"
-            )
+        print(f"[COMMAND RECEIVED] {command} args={args}")
 
-        elif match.command("START"):
-            StartTime = time.time()
-            ElapsedTime = 0
-            await bot.api.send_text_message(
-                room.room_id,
-                "🟢 Time tracking started. Try not to waste it like your talent. Use `!PAUSE`, `!UNPAUSE`, or `!STOP`.",
-            )
-
-        elif match.command("PAUSE"):
-            try:
-                if StartTime == 0:
-                    await bot.api.send_text_message(
-                        room.room_id,
-                        "😤 You can't pause time if you never started it. Try `!START` first.",
-                    )
-                    return
-                ElapsedTime = time.time() - StartTime + ElapsedTime
-                StartTime = 0
-                await bot.api.send_text_message(
-                    room.room_id,
-                    f"⏸️ Timer paused at {ElapsedTime:.2f} seconds. Deep breaths, drama queen.",
-                )
-            except Exception:
-                await bot.api.send_text_message(
-                    room.room_id, "😵 Couldn't pause. Something broke and it wasn't me."
-                )
-
-        elif match.command("UNPAUSE"):
-            try:
-                if StartTime != 0:
-                    await bot.api.send_text_message(
-                        room.room_id, "😬 Timer is already ticking, superstar."
-                    )
-                    return
-                StartTime = time.time()
-                await bot.api.send_text_message(
-                    room.room_id,
-                    f"▶️ Timer unpaused. Back to the grind. You're at {ElapsedTime:.2f} seconds.",
-                )
-            except Exception:
-                await bot.api.send_text_message(
-                    room.room_id, "🙃 Couldn't unpause. Probably user error."
-                )
-
-        elif match.command("STOP"):
-            try:
-                if StartTime == 0 and ElapsedTime == 0:
-                    await bot.api.send_text_message(
-                        room.room_id,
-                        "😡 Stop what? You've done *nothing*. Try `!START` first.",
-                    )
-                    return
-                if StartTime != 0:
-                    ElapsedTime = time.time() - StartTime + ElapsedTime
-                    StartTime = 0
-                HoursWorked = ElapsedTime / 3600
-                await bot.api.send_text_message(
-                    room.room_id,
-                    f"⏹️ Timer stopped at {ElapsedTime:.2f} seconds ({HoursWorked:.2f} hours). Type `!MEMO` like it's a diary.",
-                )
-            except Exception:
-                await bot.api.send_text_message(
-                    room.room_id,
-                    "🤯 Couldn't stop timer. Honestly, how hard is it to follow instructions?",
-                )
-
-        elif match.command("MEMO"):
-            memo_text = " ".join(match.args()).strip()
-            if memo_text:
-                if ElapsedTime == 0:
-                    await bot.api.send_text_message(
-                        room.room_id,
-                        "😡 There's no time to log. What exactly are you trying to memo, your thoughts?",
-                    )
-                else:
-                    hours_worked = ElapsedTime / 3600
-                    save_worklog(sender, memo_text, hours_worked)
-                    ElapsedTime = 0
-                    await bot.api.send_text_message(
-                        room.room_id, f"📌 Memo saved. Finally, some productivity. 📝"
-                    )
+        if command == "START":
+            if self.state == "RUNNING":
+                await self.send_message("Calm down! Already running.")
             else:
-                await bot.api.send_text_message(
-                    room.room_id,
-                    "🤐 Try again with actual words: `!MEMO [your brilliance]`.",
+                self.state = "RUNNING"
+                self.start_time = datetime.now(timezone.utc)
+                self.session_id = str(uuid.uuid4())
+                self.log_csv("STARTED")
+                await self.send_message(
+                    f"Alright, off we go! Started at {self.start_time}"
                 )
 
-        elif match.command("HELP"):
-            await bot.api.send_text_message(
-                room.room_id,
-                "**🆘 The Ultimete Guide to Not Being Useless**\n\n"
-                "`!START` – Start that clock, baby.\n"
-                "`!PAUSE` – Take a break, you've earned it (maybe).\n"
-                "`!UNPAUSE` – Back to work, slacker.\n"
-                "`!STOP` – Time's up. Wrap it.\n"
-                "`!MEMO [text]` – Tell your manager what you did, or pretend.\n"
-                "`!WHOAMI` – Existential crisis generator.\n"
-                "`!ECHO [text]` – I repeat your genius.\n"
-                "`!VIEW` – (Managers only) Peek behind the productivity curtain.\n"
-                "`!HELP` – Because clearly you need it.",
+        elif command == "STOP":
+            if self.state == "RUNNING":
+                elapsed = datetime.now(timezone.utc) - self.start_time
+                self.state = "STOPPED"
+                self.log_csv("STOPPED")
+                await self.send_message(
+                    f"Stopped! Worked for {format_elapsed(elapsed)}. Bravo!"
+                )
+            else:
+                await self.send_message(
+                    "Uhh… you weren't running. Try !help if confused."
+                )
+
+        elif command == "PAUSE":
+            if self.state == "RUNNING":
+                elapsed = datetime.now(timezone.utc) - self.start_time
+                self.state = "PAUSED"
+                self.log_csv("PAUSED")
+                await self.send_message(f"Paused. Worked for {format_elapsed(elapsed)}")
+            else:
+                await self.send_message(
+                    "Nothing to pause… are you trying to pause the universe?"
+                )
+
+        elif command == "UNPAUSE":
+            if self.state == "PAUSED":
+                self.state = "RUNNING"
+                self.start_time = datetime.now(timezone.utc)
+                self.log_csv("UNPAUSED")
+                await self.send_message("Resumed work. Back at it!")
+            else:
+                await self.send_message("Not paused. Are you making things up now?")
+
+        elif command == "MEMO":
+            self.memo = " ".join(args)
+            self.log_csv("MEMO")
+            await self.send_message(f"Memo saved: {self.memo} (don't lose it!)")
+
+        elif command == "STATUS":
+            await self.send_message(f"State: {self.state}, memo: {self.memo}")
+
+        elif command == "FUSALLY":
+            await self.send_message(
+                "I AM YOU GOD JACK\n"
+                "F YOU SALLY\n"
+                "AWSOME MUSIC, and this bot is dead"
             )
 
-        elif match.command("VIEW"):
-            if any(
-                name in sender
-                for name in [
-                    "@williamribble:gleipnir.technology",
-                    "@benjaminsperry:gleipnir.technology",
-                    "@eliribble:gleipnir.technology",
-                ]
-            ):
+        elif command == "HELP":
+            await self.send_message(
+                "Commands with sass and grace:\n"
+                "!start – Begin working. Don’t be lazy!\n"
+                "!stop – Stop the timer. Take a deep breath.\n"
+                "!pause – Pause work. Snacks encouraged.\n"
+                "!unpause – Resume. Pretend you weren’t gone.\n"
+                "!manualstart <time> – Start at a specific time.\n"
+                "!manualstop <time> – Stop at a specific time.\n"
+                "!memo <text> – Save a memo.\n"
+                "!status – Check your current state and memo.\n"
+                "Try typing something wrong for bonus sass!",
+                room_id=room.room_id,
+            )
+
+        # MANUAL COMMANDS
+        elif command == "MANUALSTART":
+            if args:
                 try:
-                    summary = ""
-                    logs_found = False
+                    manual_time = datetime.fromisoformat(args[0])
+                    if manual_time.tzinfo is None:
+                        manual_time = manual_time.replace(tzinfo=timezone.utc)
+                    self.start_time = manual_time
+                    self.state = "RUNNING"
+                    self.session_id = str(uuid.uuid4())
+                    self.log_csv("MANUALSTART")
+                    await self.send_message(f"Manual start at {manual_time}")
+                except Exception as e:
+                    await self.send_message(f"Invalid time format: {e}")
+            else:
+                await self.send_message("Usage: !manualstart YYYY-MM-DDTHH:MM:SS")
 
-                    for folder_name in os.listdir(BASE_DIR):
-                        folder_path = os.path.join(BASE_DIR, folder_name)
-                        if os.path.isdir(folder_path):
-                            file_path = os.path.join(folder_path, "worklog.txt")
-                            if os.path.exists(file_path):
-                                with open(file_path, "r", encoding="utf-8") as f:
-                                    content = f.read().strip()
-                                    if content:
-                                        logs_found = True
-                                        summary += (
-                                            f"📁 **{folder_name}**\n"
-                                            f"-------------------------\n"
-                                            f"{content}\n\n"
-                                        )
-
-                    if not logs_found:
-                        await bot.api.send_text_message(
-                            room.room_id,
-                            "🙄 Seriously? Not a single worklog? What *are* you people doing? Napping professionally?",
-                        )
-                    elif len(summary) < 4000:
-                        await bot.api.send_text_message(
-                            room.room_id,
-                            f"🧐 Alright, here’s your sacred scroll of labor:\n\n{summary}",
-                        )
-                    else:
-                        parts = [
-                            summary[i : i + 3900] for i in range(0, len(summary), 3900)
-                        ]
-                        await bot.api.send_text_message(
-                            room.room_id,
-                            "📚 Buckle up. These logs are chunkier than your WiFi signal.",
-                        )
-                        for part in parts:
-                            await bot.api.send_text_message(room.room_id, part)
-                        await bot.api.send_text_message(
-                            room.room_id, "🎤 Boom. Data dropped."
+        elif command == "MANUALSTOP":
+            if args:
+                try:
+                    manual_time = datetime.fromisoformat(args[0])
+                    if manual_time.tzinfo is None:
+                        manual_time = manual_time.replace(tzinfo=timezone.utc)
+                    if self.start_time:
+                        elapsed = manual_time - self.start_time
+                        self.state = "STOPPED"
+                        self.log_csv("MANUALSTOP")
+                        await self.send_message(
+                            f"Manual stop! Worked for {format_elapsed(elapsed)}"
                         )
                 except Exception as e:
-                    await bot.api.send_text_message(
-                        room.room_id,
-                        f"😬 Uh-oh, I tried to read the logs but the universe said no: {e}",
-                    )
+                    await self.send_message(f"Invalid time format: {e}")
             else:
-                await bot.api.send_text_message(
-                    room.room_id,
-                    "🚫 Nope. You don't have the *vibe* to access the logs. Get promoted or get lost.",
-                )
+                await self.send_message("Usage: !manualstop YYYY-MM-DDTHH:MM:SS")
+
+        elif command == "MANUALPAUSE":
+            if args:
+                try:
+                    manual_time = datetime.fromisoformat(args[0])
+                    if manual_time.tzinfo is None:
+                        manual_time = manual_time.replace(tzinfo=timezone.utc)
+                    if self.state == "RUNNING" and self.start_time:
+                        elapsed = manual_time - self.start_time
+                        self.state = "PAUSED"
+                        self.log_csv("MANUALPAUSE")
+                        await self.send_message(
+                            f"Manually paused! Worked for {format_elapsed(elapsed)}"
+                        )
+                except Exception as e:
+                    await self.send_message(f"Invalid time format: {e}")
+            else:
+                await self.send_message("Usage: !manualpause YYYY-MM-DDTHH:MM:SS")
+
+        elif command == "MANUALUNPAUSE":
+            if args:
+                try:
+                    manual_time = datetime.fromisoformat(args[0])
+                    if manual_time.tzinfo is None:
+                        manual_time = manual_time.replace(tzinfo=timezone.utc)
+                    if self.state == "PAUSED":
+                        self.start_time = manual_time
+                        self.state = "RUNNING"
+                        self.log_csv("MANUALUNPAUSE")
+                        await self.send_message(f"Manually resumed at {manual_time}")
+                    else:
+                        await self.send_message("Not paused, cannot unpause manually.")
+                except Exception as e:
+                    await self.send_message(f"Invalid time format: {e}")
+            else:
+                await self.send_message("Usage: !manualunpause YYYY-MM-DDTHH:MM:SS")
 
         else:
-            await bot.api.send_text_message(
-                room.room_id,
-                "❌ Invalid command, sweetie. Use `!HELP` before embarrassing yourself further.",
+            # only triggers if no command matched
+            await self.send_message(
+                "That sadly is not a command. Use !HELP if you… need help. I really hope I don't need to elaborate what !HELP does."
             )
 
-    bot.run()
+    async def send_message(self, message, room_id: Optional[MatrixRoom] = None):
+        room_id = room_id or self.room_id
+        await self.client.room_send(
+            room_id=room_id,
+            message_type="m.room.message",
+            content={"msgtype": "m.text", "body": message},
+        )
+        print(f"[SENT MESSAGE] {message}")  # debug print
+
+    async def reminders(self):
+        while True:
+            await asyncio.sleep(300)
+            if self.state == "RUNNING":
+                await self.send_message(
+                    "Hey! Are you ready to stop working yet, or are we just playing pretend?"
+                )
+
+
+async def run(self):
+    print("[BOT STARTED] Waiting for commands…")
+    await asyncio.gather(
+        self.client.sync_forever(timeout=30000, full_state=True), self.reminders()
+    )
+
+
+async def main():
+    homeserver = "https://matrix.gleipnir.technology"
+    access_token = os.environ.get("ACCESS_TOKEN")
+    user_id = "@timecarder:gleipnir.technology"
+    room_id = os.environ.get("ROOM_ID")
+
+    bot = MatrixBot(homeserver, access_token, user_id, room_id)
+    await run(bot)
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

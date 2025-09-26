@@ -4,3 +4,6 @@ pre-commit:
       glob: "*.py"
       run: black {staged_files}
       stage_fixed: true
+    lint:
+      glob: "*.py"
+      run: ruff check {staged_files}

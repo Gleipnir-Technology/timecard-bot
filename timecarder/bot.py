@@ -239,22 +239,21 @@ class MatrixBot:
                 )
 
 
-async def run(self):
-    print("[BOT STARTED] Waiting for commands…")
-    await asyncio.gather(
-        self.client.sync_forever(timeout=30000, full_state=True), self.reminders()
-    )
-
-
-async def main():
+async def run():
     homeserver = "https://matrix.gleipnir.technology"
     access_token = os.environ.get("ACCESS_TOKEN")
     user_id = "@timecarder:gleipnir.technology"
     room_id = os.environ.get("ROOM_ID")
 
     bot = MatrixBot(homeserver, access_token, user_id, room_id)
-    await run(bot)
+    print("[BOT STARTED] Waiting for commands…")
+    await asyncio.gather(
+        bot.client.sync_forever(timeout=30000, full_state=True), bot.reminders()
+    )
 
+
+def main():
+	asyncio.run(run())
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()

@@ -1,22 +1,17 @@
-[tool.poetry]
+[project]
 name = "timecarder"
 version = "0.1.0"
 description = "a bot for recording timecard stuff"
-authors = ["Eli Ribble <eli@gleipnir.technology>", "William Ribble"]
+authors = [
+  {name = "Eli Ribble", email = "eli@gleipnir.technology"},
+  {name = "William Ribble"},
+]
 license = "MIT"
 readme = "README.md"
 
-[tool.poetry.dependencies]
-authlib = ">=1.6.0"
-Flask = ">=3.0.0"
-python = "^3.12.11"
-simplematrixbotlib = "^2.12.3"
+dependencies = [
+	"matrix-nio>0.25"
+]
 
-
-[tool.poetry.scripts]
-timecardbot = "timecarder.test:run"
-
-[build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
-
+[project.scripts]
+timecarder = "timecarder.bot:main"

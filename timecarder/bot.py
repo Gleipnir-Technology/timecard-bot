@@ -1,8 +1,9 @@
 import asyncio
 import csv
 from datetime import datetime, timezone
-from nio import AsyncClient, MatrixRoom, RoomMessageText
+from nio import AsyncClient, Event, MatrixRoom, RoomMessageText
 import os
+import typing
 import uuid
 
 CSV_FILE = "sessions.csv"
@@ -21,7 +22,7 @@ class MatrixBot:
         self.room_id = room_id
 
         self.state = "IDLE"
-        self.start_time = None
+        self.start_time = datetime.now(timezone.utc)
         self.memo = ""
         self.session_id = None
 
@@ -48,11 +49,12 @@ class MatrixBot:
             )
         print(f"[CSV LOG] {state} at {datetime.now(timezone.utc)}")  # debug print
 
-    async def message_callback(self, room: MatrixRoom, event: RoomMessageText):
+    async def message_callback(self, room: MatrixRoom, event: Event) -> None:
         # Only listen in the right room
         # if room.room_id != self.room_id:
         # print(f"Ignoring message from {room.room_id}")
         # return
+        event = typing.cast(RoomMessageText, event)
 
         # Ignore bot's own messages
         if event.sender == self.client.user:

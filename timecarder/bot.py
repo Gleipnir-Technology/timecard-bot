@@ -62,9 +62,9 @@ class MatrixBot:
         event = cast(RoomMessageText, event)
 
         # Ignore messages from the past
-        # breakpoint()
         if event.server_timestamp < self.start_time:
             return
+
         # Ignore bot's own messages
         if event.sender == self.client.user:
             return

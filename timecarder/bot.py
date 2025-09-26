@@ -241,7 +241,7 @@ class MatrixBot:
 
 async def run():
     homeserver = "https://matrix.gleipnir.technology"
-    access_token = os.environ.get("ACCESS_TOKEN")
+    access_token = os.environ.get("BOT_TOKEN")
     user_id = "@timecarder:gleipnir.technology"
     room_id = os.environ.get("ROOM_ID")
 

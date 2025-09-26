@@ -14,4 +14,4 @@ dependencies = [
 ]
 
 [project.scripts]
-timecarder = "timecarder.bot:main"
+timecardbot = "timecarder.bot:main"

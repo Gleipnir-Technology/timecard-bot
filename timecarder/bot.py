@@ -15,6 +15,7 @@ ElapsedTime = 0
 # === Base folder for logs ===
 BASE_DIR = r"C:\Users\willi\Documents\MatrixBot"
 
+
 def get_token() -> str:
     token = os.environ.get("BOT_TOKEN")
     if token is None:
@@ -28,8 +29,10 @@ def get_token() -> str:
         sys.exit(1)
     return token
 
+
 def sanitize_filename(name: str) -> str:
     return "".join(c if c not in r'<>:"/\\|?*' else "_" for c in name)
+
 
 def save_worklog(user_tag: str, memo: str, hours_worked: float) -> None:
     safe_tag = sanitize_filename(user_tag)
@@ -44,6 +47,7 @@ def save_worklog(user_tag: str, memo: str, hours_worked: float) -> None:
 
     with open(file_path, "a", encoding="utf-8") as f:
         f.write(text)
+
 
 def main() -> None:
     global StartTime, ElapsedTime
@@ -75,47 +79,66 @@ def main() -> None:
             )
 
         elif match.command("test"):
-            await bot.api.send_text_message(room.room_id, "🤖 I am alive! And fabulous.")
+            await bot.api.send_text_message(
+                room.room_id, "🤖 I am alive! And fabulous."
+            )
 
         elif match.command("whoami"):
-            await bot.api.send_text_message(room.room_id, f"You're {sender}, obviously. 🙄")
+            await bot.api.send_text_message(
+                room.room_id, f"You're {sender}, obviously. 🙄"
+            )
 
         elif match.command("START"):
             StartTime = time.time()
             ElapsedTime = 0
             await bot.api.send_text_message(
                 room.room_id,
-                "🟢 Time tracking started. Try not to waste it like your talent. Use `!PAUSE`, `!UNPAUSE`, or `!STOP`.")
+                "🟢 Time tracking started. Try not to waste it like your talent. Use `!PAUSE`, `!UNPAUSE`, or `!STOP`.",
+            )
 
         elif match.command("PAUSE"):
             try:
                 if StartTime == 0:
-                    await bot.api.send_text_message(room.room_id, "😤 You can't pause time if you never started it. Try `!START` first.")
+                    await bot.api.send_text_message(
+                        room.room_id,
+                        "😤 You can't pause time if you never started it. Try `!START` first.",
+                    )
                     return
                 ElapsedTime = time.time() - StartTime + ElapsedTime
                 StartTime = 0
                 await bot.api.send_text_message(
                     room.room_id,
-                    f"⏸️ Timer paused at {ElapsedTime:.2f} seconds. Deep breaths, drama queen.")
+                    f"⏸️ Timer paused at {ElapsedTime:.2f} seconds. Deep breaths, drama queen.",
+                )
             except Exception:
-                await bot.api.send_text_message(room.room_id, "😵 Couldn't pause. Something broke and it wasn't me.")
+                await bot.api.send_text_message(
+                    room.room_id, "😵 Couldn't pause. Something broke and it wasn't me."
+                )
 
         elif match.command("UNPAUSE"):
             try:
                 if StartTime != 0:
-                    await bot.api.send_text_message(room.room_id, "😬 Timer is already ticking, superstar.")
+                    await bot.api.send_text_message(
+                        room.room_id, "😬 Timer is already ticking, superstar."
+                    )
                     return
                 StartTime = time.time()
                 await bot.api.send_text_message(
                     room.room_id,
-                    f"▶️ Timer unpaused. Back to the grind. You're at {ElapsedTime:.2f} seconds.")
+                    f"▶️ Timer unpaused. Back to the grind. You're at {ElapsedTime:.2f} seconds.",
+                )
             except Exception:
-                await bot.api.send_text_message(room.room_id, "🙃 Couldn't unpause. Probably user error.")
+                await bot.api.send_text_message(
+                    room.room_id, "🙃 Couldn't unpause. Probably user error."
+                )
 
         elif match.command("STOP"):
             try:
                 if StartTime == 0 and ElapsedTime == 0:
-                    await bot.api.send_text_message(room.room_id, "😡 Stop what? You've done *nothing*. Try `!START` first.")
+                    await bot.api.send_text_message(
+                        room.room_id,
+                        "😡 Stop what? You've done *nothing*. Try `!START` first.",
+                    )
                     return
                 if StartTime != 0:
                     ElapsedTime = time.time() - StartTime + ElapsedTime
@@ -123,9 +146,13 @@ def main() -> None:
                 HoursWorked = ElapsedTime / 3600
                 await bot.api.send_text_message(
                     room.room_id,
-                    f"⏹️ Timer stopped at {ElapsedTime:.2f} seconds ({HoursWorked:.2f} hours). Type `!MEMO` like it's a diary.")
+                    f"⏹️ Timer stopped at {ElapsedTime:.2f} seconds ({HoursWorked:.2f} hours). Type `!MEMO` like it's a diary.",
+                )
             except Exception:
-                await bot.api.send_text_message(room.room_id, "🤯 Couldn't stop timer. Honestly, how hard is it to follow instructions?")
+                await bot.api.send_text_message(
+                    room.room_id,
+                    "🤯 Couldn't stop timer. Honestly, how hard is it to follow instructions?",
+                )
 
         elif match.command("MEMO"):
             memo_text = " ".join(match.args()).strip()
@@ -133,14 +160,20 @@ def main() -> None:
                 if ElapsedTime == 0:
                     await bot.api.send_text_message(
                         room.room_id,
-                        "😡 There's no time to log. What exactly are you trying to memo, your thoughts?")
+                        "😡 There's no time to log. What exactly are you trying to memo, your thoughts?",
+                    )
                 else:
                     hours_worked = ElapsedTime / 3600
                     save_worklog(sender, memo_text, hours_worked)
                     ElapsedTime = 0
-                    await bot.api.send_text_message(room.room_id, f"📌 Memo saved. Finally, some productivity. 📝")
+                    await bot.api.send_text_message(
+                        room.room_id, f"📌 Memo saved. Finally, some productivity. 📝"
+                    )
             else:
-                await bot.api.send_text_message(room.room_id, "🤐 Try again with actual words: `!MEMO [your brilliance]`.")
+                await bot.api.send_text_message(
+                    room.room_id,
+                    "🤐 Try again with actual words: `!MEMO [your brilliance]`.",
+                )
 
         elif match.command("HELP"):
             await bot.api.send_text_message(
@@ -154,10 +187,18 @@ def main() -> None:
                 "`!WHOAMI` – Existential crisis generator.\n"
                 "`!ECHO [text]` – I repeat your genius.\n"
                 "`!VIEW` – (Managers only) Peek behind the productivity curtain.\n"
-                "`!HELP` – Because clearly you need it.")
+                "`!HELP` – Because clearly you need it.",
+            )
 
         elif match.command("VIEW"):
-            if any(name in sender for name in ["@williamribble:gleipnir.technology", "@benjaminsperry:gleipnir.technology", "@eliribble:gleipnir.technology"]):
+            if any(
+                name in sender
+                for name in [
+                    "@williamribble:gleipnir.technology",
+                    "@benjaminsperry:gleipnir.technology",
+                    "@eliribble:gleipnir.technology",
+                ]
+            ):
                 try:
                     summary = ""
                     logs_found = False
@@ -180,31 +221,45 @@ def main() -> None:
                     if not logs_found:
                         await bot.api.send_text_message(
                             room.room_id,
-                            "🙄 Seriously? Not a single worklog? What *are* you people doing? Napping professionally?")
+                            "🙄 Seriously? Not a single worklog? What *are* you people doing? Napping professionally?",
+                        )
                     elif len(summary) < 4000:
-                        await bot.api.send_text_message(room.room_id, f"🧐 Alright, here’s your sacred scroll of labor:\n\n{summary}")
+                        await bot.api.send_text_message(
+                            room.room_id,
+                            f"🧐 Alright, here’s your sacred scroll of labor:\n\n{summary}",
+                        )
                     else:
-                        parts = [summary[i:i+3900] for i in range(0, len(summary), 3900)]
-                        await bot.api.send_text_message(room.room_id, "📚 Buckle up. These logs are chunkier than your WiFi signal.")
+                        parts = [
+                            summary[i : i + 3900] for i in range(0, len(summary), 3900)
+                        ]
+                        await bot.api.send_text_message(
+                            room.room_id,
+                            "📚 Buckle up. These logs are chunkier than your WiFi signal.",
+                        )
                         for part in parts:
                             await bot.api.send_text_message(room.room_id, part)
-                        await bot.api.send_text_message(room.room_id, "🎤 Boom. Data dropped.")
+                        await bot.api.send_text_message(
+                            room.room_id, "🎤 Boom. Data dropped."
+                        )
                 except Exception as e:
                     await bot.api.send_text_message(
                         room.room_id,
-                        f"😬 Uh-oh, I tried to read the logs but the universe said no: {e}")
+                        f"😬 Uh-oh, I tried to read the logs but the universe said no: {e}",
+                    )
             else:
                 await bot.api.send_text_message(
                     room.room_id,
-                    "🚫 Nope. You don't have the *vibe* to access the logs. Get promoted or get lost.")
+                    "🚫 Nope. You don't have the *vibe* to access the logs. Get promoted or get lost.",
+                )
 
         else:
             await bot.api.send_text_message(
                 room.room_id,
-                "❌ Invalid command, sweetie. Use `!HELP` before embarrassing yourself further.")
+                "❌ Invalid command, sweetie. Use `!HELP` before embarrassing yourself further.",
+            )
 
     bot.run()
 
+
 if __name__ == "__main__":
     main()
-

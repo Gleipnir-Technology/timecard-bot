@@ -67,7 +67,7 @@ class MatrixBot:
         args = body.split()[1:]
         room_id = room.room_id
 
-        LOGGER.info("[COMMAND RECEIVED] {%s} args={%s}", command, args)
+        LOGGER.info("%s: %s (%s)", event.sender, command, args)
 
         if command == "START":
             if self.state == "RUNNING":

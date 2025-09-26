@@ -263,6 +263,7 @@ class MatrixBot:
 
 async def run():
     logging.basicConfig(level=logging.INFO)
+    logging.getLogger("nio.rooms").setLevel(logging.WARN)
     homeserver = "https://matrix.gleipnir.technology"
     access_token = os.environ.get("BOT_TOKEN")
     user_id = "@timecarder:gleipnir.technology"

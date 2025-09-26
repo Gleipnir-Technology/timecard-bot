@@ -20,6 +20,7 @@
       in {
         default = pkgs.${system}.mkShellNoCC {
           packages = with pkgs.${system}; [
+            black
             lefthook
             (mkPoetryEnv { projectDir = self; })
             poetry

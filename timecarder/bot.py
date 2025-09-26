@@ -1,12 +1,14 @@
 import asyncio
 import csv
 from datetime import datetime, timezone
+import logging
 from nio import AsyncClient, Event, MatrixRoom, RoomMessageText
 import os
 import typing
 import uuid
 
 CSV_FILE = "sessions.csv"
+LOGGER = logging.getLogger("main")
 
 
 def format_elapsed(delta):
@@ -47,13 +49,9 @@ class MatrixBot:
                     self.memo,
                 ]
             )
-        print(f"[CSV LOG] {state} at {datetime.now(timezone.utc)}")  # debug print
+        LOGGER.info("[CSV LOG] {%s} at {%s}", state, datetime.now(timezone.utc))
 
     async def message_callback(self, room: MatrixRoom, event: Event) -> None:
-        # Only listen in the right room
-        # if room.room_id != self.room_id:
-        # print(f"Ignoring message from {room.room_id}")
-        # return
         event = typing.cast(RoomMessageText, event)
 
         # Ignore bot's own messages
@@ -69,7 +67,7 @@ class MatrixBot:
         args = body.split()[1:]
         room_id = room.room_id
 
-        print(f"[COMMAND RECEIVED] {command} args={args}")
+        LOGGER.info("[COMMAND RECEIVED] {%s} args={%s}", command, args)
 
         if command == "START":
             if self.state == "RUNNING":
@@ -247,12 +245,12 @@ class MatrixBot:
 
     async def send_message(self, message, room_id: str):
         room_id = room_id or self.room_id
-        await self.client.room_send(
-            room_id=room_id,
-            message_type="m.room.message",
-            content={"msgtype": "m.text", "body": message},
-        )
-        print(f"[SENT MESSAGE] {message}")  # debug print
+        # await self.client.room_send(
+        # room_id=room_id,
+        # message_type="m.room.message",
+        # content={"msgtype": "m.text", "body": message},
+        # )
+        LOGGER.info("[SENT MESSAGE] {%s}", message)
 
     async def reminders(self):
         while True:
@@ -264,13 +262,14 @@ class MatrixBot:
 
 
 async def run():
+    logging.basicConfig(level=logging.INFO)
     homeserver = "https://matrix.gleipnir.technology"
     access_token = os.environ.get("BOT_TOKEN")
     user_id = "@timecarder:gleipnir.technology"
     room_id = os.environ.get("ROOM_ID")
 
     bot = MatrixBot(homeserver, access_token, user_id, room_id)
-    print("[BOT STARTED] Waiting for commands…")
+    LOGGER.info("[BOT STARTED] Waiting for commands…")
     await asyncio.gather(
         bot.client.sync_forever(timeout=30000, full_state=True), bot.reminders()
     )

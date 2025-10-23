@@ -1,11 +1,3 @@
-// Copyright (C) 2017 Tulir Asokan
-// Copyright (C) 2018-2020 Luca Weiss
-// Copyright (C) 2023 Tulir Asokan
-//
-// This Source Code Form is subject to the terms of the Mozilla Public
-// License, v. 2.0. If a copy of the MPL was not distributed with this
-// file, You can obtain one at http://mozilla.org/MPL/2.0/.
-
 package main
 
 import (
@@ -43,7 +35,8 @@ func main() {
 		os.Exit(1)
 	}
 
-	client, err := mautrix.NewClient(*homeserver, "", "")
+	userID := id.NewUserID(*username, *homeserver)
+	client, err := mautrix.NewClient(*homeserver, userID, *accessToken)
 	if err != nil {
 		panic(err)
 	}
@@ -100,10 +93,10 @@ func main() {
 	// You can also store the user/device IDs and access token and put them in the client beforehand instead of using LoginAs.
 	//client.UserID = "..."
 	//client.DeviceID = "..."
-	client.AccessToken = *accessToken
+	//client.AccessToken = *accessToken
 	// You don't need to set a device ID in LoginAs because the crypto helper will set it for you if necessary.
 	log.Printf("Logging in as '%s' with token '%s'", *username, *accessToken)
-	cryptoHelper.LoginAs = &mautrix.ReqLogin{
+	/*cryptoHelper.LoginAs = &mautrix.ReqLogin{
 		Type:       mautrix.AuthTypeToken,
 		Identifier: mautrix.UserIdentifier{Type: mautrix.IdentifierTypeUser, User: *username},
 		//Password:   *password,
@@ -116,7 +109,18 @@ func main() {
 		panic(err)
 	}
 	// Set the client crypto helper in order to automatically encrypt outgoing messages
-	client.Crypto = cryptoHelper
+	client.Crypto = cryptoHelper*/
+	req := mautrix.ReqLogin{
+		Type: mautrix.AuthTypeToken,
+		Identifier: mautrix.UserIdentifier{Type: mautrix.IdentifierTypeUser, User: *username},
+		//Password:   *password,
+		Token: *accessToken,
+	}
+	_, err = client.Login(context.TODO(), &req)
+	if err != nil {
+		panic(err)
+	}
+
 
 	log.Info().Msg("Now running")
 	syncCtx, cancelSync := context.WithCancel(context.Background())

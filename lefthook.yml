@@ -1,12 +1,11 @@
 pre-commit:
   commands:
-    format:
-      glob: "*.py"
-      run: black {staged_files}
-      stage_fixed: true
     lint:
-      glob: "*.py"
-      run: ruff check {staged_files}
-    typcheck:
-      glob: "*.py"
-      run: pyright {staged_files}
+      glob: "*.go"
+      run: gofmt -w {staged_files}
+      stage_fixed: true
+pre-push:
+  commands:
+    test:
+      glob: "*.go"
+      run: go test -race -count=1 -timeout=30s

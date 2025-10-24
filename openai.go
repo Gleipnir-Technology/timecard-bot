@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/openai/openai-go/v3"
@@ -22,7 +23,7 @@ type OpenAIClient struct {
 func NewOpenAIClient(logger Logger, apiKey string, aiRequestChannel chan AIRequest, aiResponseChannel chan AIResponse) (*OpenAIClient, error) {
 	openAIClient := openai.NewClient(
 		option.WithAPIKey(apiKey),
-		//option.WithDebugLog(LoggerShim(logger)),
+		option.WithDebugLog(LoggerShim(logger)),
 	)
 	return &OpenAIClient{
 		aiRequestChannel:  aiRequestChannel,
@@ -53,18 +54,43 @@ func (c *OpenAIClient) Run(ctx context.Context, waitGroup *sync.WaitGroup) {
 func (c *OpenAIClient) continueConversation(ctx context.Context, req AIRequest) error {
 	param, ok := c.conversations[req.RoomID.String()]
 	if !ok {
-		return c.startConversation(ctx, req)
+		c.startConversation(ctx, req)
+		param = c.conversations[req.RoomID.String()]
 	}
 	param.Messages = append(param.Messages, openai.UserMessage(fmt.Sprintf("user: %s\n", req.Message)))
 	completion, err := c.client.Chat.Completions.New(ctx, param)
 	if err != nil {
-		return fmt.Errorf("Failed to get ongoing completion: %v", err)
+		return fmt.Errorf("Failed to get completion: %v", err)
 	}
+	toolMessages, err := c.handleToolCalls(ctx, req, completion.Choices[0].Message.ToolCalls)
+	if err != nil {
+		return fmt.Errorf("Failed to handle tool calls: %v", err)
+	}
+	if len(toolMessages) > 0 {
+		param.Messages = append(param.Messages, completion.Choices[0].Message.ToParam())
+		for _, msg := range toolMessages {
+			param.Messages = append(param.Messages, msg)
+		}
+		c.log.Debug().Int("count", len(toolMessages)).Msg("Responding to tool request")
+		completion, err = c.client.Chat.Completions.New(ctx, param)
+		if err != nil {
+			return fmt.Errorf("Failed to handle tool calls: %v", err)
+		}
+		param.Messages = append(param.Messages, completion.Choices[0].Message.ToParam())
+		//completion, err = c.client.Chat.Completions.New(ctx, param)
+		//if err != nil {
+		//return fmt.Errorf("Failed to get ongoing completion: %v", err)
+		//}
+	} else {
+		c.log.Debug().Msg("Continuing conversation without tool responses")
+		//param.Messages = append(param.Messages, completion.Choices[0].Message.ToParam())
+	}
+	var toSay string = completion.Choices[0].Message.Content
+	toSay = strings.Replace(toSay, "bot: ", "", 1)
 	c.aiResponseChannel <- AIResponse{
-		Message: completion.Choices[0].Message.Content,
+		Message: toSay,
 		RoomID:  req.RoomID,
 	}
-	param.Messages = append(param.Messages, completion.Choices[0].Message.ToParam())
 	c.conversations[req.RoomID.String()] = param
 	return nil
 }
@@ -80,8 +106,17 @@ func (c *OpenAIClient) handleToolCalls(ctx context.Context, req AIRequest, toolC
 				return results, fmt.Errorf("Failed to unmarshal toll call JSON: %v", err)
 			}
 			description := args["description"].(string)
-			started := args["started"].(string)
+			var started string
+			if args["started"] == nil {
+				started = ""
+			} else {
+				started = args["started"].(string)
+			}
 			c.log.Info().Str("sender", req.Sender).Str("description", description).Str("started", started).Msg("User switched tasks")
+			c.aiResponseChannel <- AIResponse{
+				Message: fmt.Sprintf("/me 📋 notes task '%s'", description),
+				RoomID:  req.RoomID,
+			}
 			results = append(results, openai.ToolMessage("task updated", toolCall.ID))
 		} else {
 			c.log.Warn().Str("function", toolCall.Function.Name).Msg("Unrecognized tool call")
@@ -90,10 +125,10 @@ func (c *OpenAIClient) handleToolCalls(ctx context.Context, req AIRequest, toolC
 	return results, nil
 }
 
-func (c *OpenAIClient) startConversation(ctx context.Context, req AIRequest) error {
+func (c *OpenAIClient) startConversation(ctx context.Context, req AIRequest) {
 	param := openai.ChatCompletionNewParams{
 		Messages: []openai.ChatCompletionMessageParamUnion{
-			openai.UserMessage(fmt.Sprintf("This is a text chat conversation between an employee and a chatbot helping to manage timecards. Messages from the user will start with 'user:'. Sometimes the user won't say anything for a long time and the chatbot needs to follow-up with them. When time passes, there will be a prompt like '<20 minutes pass>'. The bot should then prompt the user to provide a bit of information about what they've been working on during that time. The bot should be interested to know what the user's goals are at a high level and should pay attention to any difficulties or frustrations the user experiences.\n\nuser: %s\n", req.Message)),
+			openai.UserMessage("This is a text chat conversation between an employee and a chatbot helping to manage timecards. Messages from the user will start with 'user:'. Messages from the bot will start with 'bot:'. Sometimes the user won't say anything for a long time and the chatbot needs to follow-up with them. When time passes, there will be a prompt like '<20 minutes pass>'. The bot should then prompt the user to provide a bit of information about what they've been working on during that time. The bot should be interested to know what the user's goals are at a high level and should pay attention to any difficulties or frustrations the user experiences.\n\n"),
 		},
 		Model: openai.ChatModelO4Mini,
 		Seed:  openai.Int(1),
@@ -121,30 +156,5 @@ func (c *OpenAIClient) startConversation(ctx context.Context, req AIRequest) err
 	}
 
 	c.log.Info().Str("sender", req.Sender).Msg("Starting conversation")
-	completion, err := c.client.Chat.Completions.New(ctx, param)
-	if err != nil {
-		return fmt.Errorf("Failed to get completion: %v", err)
-	}
-	param.Messages = append(param.Messages, completion.Choices[0].Message.ToParam())
-	toolMessages, err := c.handleToolCalls(ctx, req, completion.Choices[0].Message.ToolCalls)
-	if err != nil {
-		return fmt.Errorf("Failed to handle tool calls: %v", err)
-	}
-	c.log.Debug().Int("count", len(toolMessages)).Msg("Got tool response messages")
-	if len(toolMessages) > 0 {
-		for _, msg := range toolMessages {
-			param.Messages = append(param.Messages, msg)
-		}
-		completion, err = c.client.Chat.Completions.New(ctx, param)
-		if err != nil {
-			return fmt.Errorf("Failed to handle tool calls: %v", err)
-		}
-	}
-	c.aiResponseChannel <- AIResponse{
-		Message: completion.Choices[0].Message.Content,
-		RoomID:  req.RoomID,
-	}
-
 	c.conversations[req.RoomID.String()] = param
-	return nil
 }

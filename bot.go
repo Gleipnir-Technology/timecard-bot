@@ -7,6 +7,8 @@ import (
 	"os/signal"
 	"sync"
 	"syscall"
+
+	"github.com/rs/zerolog"
 )
 
 type BotConfiguration struct {
@@ -31,7 +33,7 @@ func NewBot(config BotConfiguration) (*Bot, error) {
 	aiRequestChannel := make(chan AIRequest)
 	aiResponseChannel := make(chan AIResponse)
 
-	matrixClient, err := NewMatrixClient(log.With().Str("component", "matrix").Logger(), config.MatrixHomeserver, config.MatrixUser, config.MatrixAccessToken, aiRequestChannel, aiResponseChannel)
+	matrixClient, err := NewMatrixClient(log.With().Str("component", "matrix").Logger().Level(zerolog.InfoLevel), config.MatrixHomeserver, config.MatrixUser, config.MatrixAccessToken, aiRequestChannel, aiResponseChannel)
 	if err != nil {
 		return nil, fmt.Errorf("Failed to create matrix client: %v", err)
 	}

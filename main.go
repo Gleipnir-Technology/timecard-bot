@@ -70,17 +70,31 @@ func main() {
 	}
 	client.Log = log
 
+	started := time.Now()
+
 	var lastRoomID id.RoomID
 	syncer := client.Syncer.(*mautrix.DefaultSyncer)
 	syncer.OnEventType(event.EventMessage, func(ctx context.Context, evt *event.Event) {
+		eventTime := timestampToTime(evt.Timestamp)
+		if started.After(eventTime) {
+			return
+		}
 		lastRoomID = evt.RoomID
+		since := eventTime.Sub(started)
 		log.Info().
 			Str("sender", evt.Sender.String()).
 			Int64("timestamp", evt.Timestamp).
+			Str("ago", since.String()).
 			Str("type", evt.Type.String()).
 			Str("id", evt.ID.String()).
 			Str("body", evt.Content.AsMessage().Body).
 			Msg("Received message")
+		/*resp, err := client.SendText(context.TODO(), lastRoomID, "hey")
+		if err != nil {
+			log.Error().Err(err).Msg("Failed to send event")
+		} else {
+			log.Info().Stringer("event_id", resp.EventID).Msg("Event sent")
+		}*/
 	})
 
 	resp, err := client.GetOwnDisplayName(context.TODO())
@@ -120,4 +134,15 @@ func main() {
 	syncStopWait.Wait()
 
 	log.Info().Msg("Success")
+}
+
+// / Convert a Matrix timestamp, which is milliseconds since Unix epoch
+// / to a golang Time
+func timestampToTime(milliseconds int64) time.Time {
+	// Convert milliseconds to seconds and nanoseconds
+	seconds := milliseconds / 1000
+	nanoseconds := (milliseconds % 1000) * int64(time.Millisecond) // Convert millisecond remainder to nanoseconds
+
+	// Create time.Time object using Unix time
+	return time.Unix(seconds, nanoseconds)
 }

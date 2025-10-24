@@ -49,13 +49,9 @@ func parseUserID(username string) (id.UserID, error) {
 
 func main() {
 	accessToken := os.Getenv("MATRIX_ACCESS_TOKEN")
+	databaseURI := os.Getenv("POSTGRES_URI")
 	homeserver := os.Getenv("MATRIX_HOMESERVER")
 	user := os.Getenv("MATRIX_USER")
-
-	userID, err := parseUserID(user)
-	if err != nil {
-		panic(err)
-	}
 
 	log := zerolog.New(zerolog.NewConsoleWriter(func(w *zerolog.ConsoleWriter) {
 		//w.Out = io.Writer(buf)
@@ -63,6 +59,30 @@ func main() {
 	})).With().Timestamp().Logger()
 	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
 	exzerolog.SetupDefaults(&log)
+
+	if accessToken == "" {
+		log.Error().Msg("You must provide a value for MATRIX_ACCESS_TOKEN")
+		os.Exit(1)
+	}
+	if databaseURI == "" {
+		log.Error().Msg("You must provide a value for POSTGRES_URI")
+		os.Exit(1)
+	}
+	if homeserver == "" {
+		log.Error().Msg("You must provide a value for MATRIX_HOMESERVER")
+		os.Exit(1)
+	}
+	if user == "" {
+		log.Error().Msg("You must provide a value for MATRIX_USER")
+		os.Exit(1)
+	}
+
+	userID, err := parseUserID(user)
+	if err != nil {
+		log.Error().Str("error", "Failed to parse user ID").
+			Str("value", user)
+		os.Exit(1)
+	}
 
 	client, err := mautrix.NewClient(homeserver, userID, accessToken)
 	if err != nil {

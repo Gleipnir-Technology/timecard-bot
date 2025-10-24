@@ -84,6 +84,18 @@ func main() {
 		os.Exit(1)
 	}
 
+	needsMigrations, err := needsMigrations(databaseURI)
+	if err != nil || needsMigrations == nil {
+		log.Error().Msg("Failed to check if we need database migrations")
+		os.Exit(1)
+	}
+	if *needsMigrations {
+		doMigrations(databaseURI)
+		log.Info().Msg("Handled migrations")
+	} else {
+		log.Info().Msg("No migrations necessary")
+	}
+
 	client, err := mautrix.NewClient(homeserver, userID, accessToken)
 	if err != nil {
 		panic(err)

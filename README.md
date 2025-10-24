@@ -14,7 +14,11 @@ This will produce files in `result/`, including `result/bin/timecardbot`
 
 ## Configuring
 
-You must provide an environment variable `BOT_TOKEN` which contains an authentication token or a file `token.txt` which contains the token.
+You'll need to provide various options
+
+### POSTGRES_URI
+
+This is the connection URI for the database you'll be using. If you use unix domain sockets I'd recommend something like `postgres:///dbname?host=/var/run/postgresql`
 
 ## Hacking
 
@@ -24,27 +28,12 @@ On NixOS:
 nix develop
 ```
 
-### Testing
+### bob
 
-After `nix develop` run [pytest](https://docs.pytest.org/en/latest/) with `pytest`
-
-## Deployment
+This uses the bob query framework. You can regenerate the models for bob with:
 
 ```
-{ pkgs, lib, config, ... }:                                                                                    
-let                                                                                                                     
-        timecardBotSrc = pkgs.fetchFromGitHub {                                                                                            
-                owner  = "Gleipnir-Technology";                                                                                        
-                repo   = "timecard-bot";                                                                                                                              
-                rev    = "7996c5cf18e2e12a5ea347e364a86845472df8dc";                                                           
-                sha256 = "bplL0DphBwQ6xvj+t1YmDzqhbUkHzkep5enBMFjYV9w=";                                                    
-        };                                                                                                                  
-        timecardBotFlake = (import timecardBotSrc);                                                                             
-        timecardBotPackage = timecardBotFlake.packages.${pkgs.system}.default;                                 
-in                                                                                                         
-{                                                                                                                                        
-        environment.systemPackages = with pkgs; [                                                                                                     
-                timecardBotPackage                                                                                
-        ];                                                                                                                
-}
+PSQL_DSN="postgresql://dbname?host=/var/run/postgresql&sslmode=disable" go run github.com/stephenafamo/bob/gen/bobgen-psql@latest"
 ```
+
+This will generate a bunch of files.

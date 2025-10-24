@@ -1,0 +1,11 @@
+aliases:
+  user_:
+    up_plural: "Users"
+    up_singular: "User"
+    down_plural: "users"
+    down_singular: "user"
+psql:
+  dsn: "timecarder?host=/var/run/postgresql&sslmode=disable"
+  queries:
+    - ./sql
+plugins_preset: "all"

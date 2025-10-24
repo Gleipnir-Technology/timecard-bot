@@ -57,7 +57,7 @@ func (c *OpenAIClient) continueConversation(ctx context.Context, req AIRequest) 
 		c.startConversation(ctx, req)
 		param = c.conversations[req.RoomID.String()]
 	}
-	param.Messages = append(param.Messages, openai.UserMessage(fmt.Sprintf("user: %s\n", req.Message)))
+	param.Messages = append(param.Messages, openai.UserMessage(fmt.Sprintf("(%s) user: %s\n", req.Timestamp.String(), req.Message)))
 	completion, err := c.client.Chat.Completions.New(ctx, param)
 	if err != nil {
 		return fmt.Errorf("Failed to get completion: %v", err)
@@ -98,7 +98,21 @@ func (c *OpenAIClient) continueConversation(ctx context.Context, req AIRequest) 
 func (c *OpenAIClient) handleToolCalls(ctx context.Context, req AIRequest, toolCalls []openai.ChatCompletionMessageToolCallUnion) ([]openai.ChatCompletionMessageParamUnion, error) {
 	var results []openai.ChatCompletionMessageParamUnion
 	for _, toolCall := range toolCalls {
-		if toolCall.Function.Name == "switch_task" {
+		if toolCall.Function.Name == "followup_timer" {
+			// Extract the description from the function call arguments
+			var args map[string]interface{}
+			err := json.Unmarshal([]byte(toolCall.Function.Arguments), &args)
+			if err != nil {
+				return results, fmt.Errorf("Failed to unmarshal tool call JSON: %v", err)
+			}
+			interval := args["interval"].(string)
+			c.log.Info().Str("sender", req.Sender).Str("interval", interval).Msg("Followup scheduled")
+			c.aiResponseChannel <- AIResponse{
+				Message: fmt.Sprintf("/me ⌛ followup scheduled '%s'", interval),
+				RoomID:  req.RoomID,
+			}
+			results = append(results, openai.ToolMessage("followup scheduled", toolCall.ID))
+		} else if toolCall.Function.Name == "switch_task" {
 			// Extract the description from the function call arguments
 			var args map[string]interface{}
 			err := json.Unmarshal([]byte(toolCall.Function.Arguments), &args)
@@ -128,7 +142,7 @@ func (c *OpenAIClient) handleToolCalls(ctx context.Context, req AIRequest, toolC
 func (c *OpenAIClient) startConversation(ctx context.Context, req AIRequest) {
 	param := openai.ChatCompletionNewParams{
 		Messages: []openai.ChatCompletionMessageParamUnion{
-			openai.UserMessage("This is a text chat conversation between an employee and a chatbot helping to manage timecards. Messages from the user will start with 'user:'. Messages from the bot will start with 'bot:'. Sometimes the user won't say anything for a long time and the chatbot needs to follow-up with them. When time passes, there will be a prompt like '<20 minutes pass>'. The bot should then prompt the user to provide a bit of information about what they've been working on during that time. The bot should be interested to know what the user's goals are at a high level and should pay attention to any difficulties or frustrations the user experiences.\n\n"),
+			openai.UserMessage("This is a text chat conversation between an employee and a chatbot helping to manage timecards. Messages from the user will start with '(timestamp) user:'. Messages from the bot will start with 'bot:'. Sometimes the user won't say anything for a long time and the chatbot needs to follow-up with them. When time passes, there will be a prompt like '<20 minutes pass>'. The bot should then prompt the user to provide a bit of information about what they've been working on during that time. The bot should be interested to know what the user's goals are at a high level and should pay attention to any difficulties or frustrations the user experiences.\n\n"),
 		},
 		Model: openai.ChatModelO4Mini,
 		Seed:  openai.Int(1),
@@ -149,6 +163,26 @@ func (c *OpenAIClient) startConversation(ctx context.Context, req AIRequest) {
 							},
 						},
 						"required": []string{"description"},
+					},
+				},
+			},
+		}, {
+			OfFunction: &openai.ChatCompletionFunctionToolParam{
+				Function: openai.FunctionDefinitionParam{
+					Name:        "followup_timer",
+					Description: openai.String("This should be used to indicate that the bot should follow up with the user in the future to check on task progress."),
+					Parameters: openai.FunctionParameters{
+						"type": "object",
+						"properties": map[string]interface{}{
+							"description": map[string]string{
+								"type": "string",
+							},
+							"interval": map[string]string{
+								"format": "time",
+								"type":   "string",
+							},
+						},
+						"required": []string{"interval"},
 					},
 				},
 			},

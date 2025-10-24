@@ -36,7 +36,7 @@ func NewBot(config BotConfiguration) (*Bot, error) {
 		return nil, fmt.Errorf("Failed to create matrix client: %v", err)
 	}
 
-	openAIClient, err := NewOpenAIClient(LoggerShim(log.With().Str("component", "openai").Logger()), config.OpenAIAPIKey, aiRequestChannel, aiResponseChannel)
+	openAIClient, err := NewOpenAIClient(log.With().Str("component", "openai").Logger(), config.OpenAIAPIKey, aiRequestChannel, aiResponseChannel)
 	if err != nil {
 		return nil, fmt.Errorf("Failed to create open AI client: %v", err)
 	}

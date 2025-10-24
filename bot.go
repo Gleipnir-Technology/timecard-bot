@@ -3,18 +3,11 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
 	"os"
 	"os/signal"
 	"sync"
 	"syscall"
-	"time"
-
-	"github.com/rs/zerolog"
-	"go.mau.fi/util/exzerolog"
 )
-
-type Logger = zerolog.Logger
 
 type BotConfiguration struct {
 	MatrixAccessToken string
@@ -29,27 +22,21 @@ type Bot struct {
 	aiRequestChannel  chan AIRequest
 	aiResponseChannel chan AIResponse
 	config            BotConfiguration
-	log               zerolog.Logger
+	log               *Logger
 	matrixClient      *MatrixClient
 }
 
 func NewBot(config BotConfiguration) (*Bot, error) {
-	log := zerolog.New(zerolog.NewConsoleWriter(func(w *zerolog.ConsoleWriter) {
-		//w.Out = io.Writer(buf)
-		w.TimeFormat = time.Stamp
-	})).With().Timestamp().Logger()
-	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
-	exzerolog.SetupDefaults(&log)
-
+	log := CreateLogger()
 	aiRequestChannel := make(chan AIRequest)
 	aiResponseChannel := make(chan AIResponse)
 
-	matrixClient, err := NewMatrixClient(log, config.MatrixHomeserver, config.MatrixUser, config.MatrixAccessToken, aiRequestChannel, aiResponseChannel)
+	matrixClient, err := NewMatrixClient(log.With().Str("component", "matrix").Logger(), config.MatrixHomeserver, config.MatrixUser, config.MatrixAccessToken, aiRequestChannel, aiResponseChannel)
 	if err != nil {
 		return nil, fmt.Errorf("Failed to create matrix client: %v", err)
 	}
 
-	openAIClient, err := NewOpenAIClient(config.OpenAIAPIKey, aiRequestChannel, aiResponseChannel)
+	openAIClient, err := NewOpenAIClient(LoggerShim(log.With().Str("component", "openai").Logger()), config.OpenAIAPIKey, aiRequestChannel, aiResponseChannel)
 	if err != nil {
 		return nil, fmt.Errorf("Failed to create open AI client: %v", err)
 	}
@@ -86,11 +73,11 @@ func (bot *Bot) Run() {
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
 	sig := <-sigChan
-	log.Printf("Received signal: %v\n", sig)
+	bot.log.Info().Str("signal", sig.String()).Msg("Received signal")
 
-	log.Println("Canceling workers")
+	bot.log.Info().Msg("Canceling workers")
 	cancel()
-	log.Println("Waiting for workers to finish...")
+	bot.log.Info().Msg("Waiting for workers to finish...")
 	waitGroup.Wait()
-	log.Println("Workers complete, exiting.")
+	bot.log.Info().Msg("Workers complete, exiting.")
 }

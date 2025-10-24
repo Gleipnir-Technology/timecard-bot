@@ -9,6 +9,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/openai/openai-go/v3"
+	"github.com/openai/openai-go/v3/option"
+	//"github.com/openai/openai-go/v3/shared"
 	"github.com/rs/zerolog"
 	"go.mau.fi/util/exzerolog"
 
@@ -51,6 +54,7 @@ func main() {
 	accessToken := os.Getenv("MATRIX_ACCESS_TOKEN")
 	databaseURI := os.Getenv("POSTGRES_URI")
 	homeserver := os.Getenv("MATRIX_HOMESERVER")
+	openaiApiKey := os.Getenv("OPENAI_API_KEY")
 	user := os.Getenv("MATRIX_USER")
 
 	log := zerolog.New(zerolog.NewConsoleWriter(func(w *zerolog.ConsoleWriter) {
@@ -70,6 +74,10 @@ func main() {
 	}
 	if homeserver == "" {
 		log.Error().Msg("You must provide a value for MATRIX_HOMESERVER")
+		os.Exit(1)
+	}
+	if openaiApiKey == "" {
+		log.Error().Msg("You must provide a value for OPENAI_API_KEY")
 		os.Exit(1)
 	}
 	if user == "" {
@@ -96,19 +104,26 @@ func main() {
 		log.Info().Msg("No migrations necessary")
 	}
 
-	client, err := mautrix.NewClient(homeserver, userID, accessToken)
+	openAIClient := openai.NewClient(
+		option.WithAPIKey(openaiApiKey),
+	)
+
+	matrixClient, err := mautrix.NewClient(homeserver, userID, accessToken)
 	if err != nil {
 		panic(err)
 	}
-	client.Log = log
+	matrixClient.Log = log
 
 	started := time.Now()
 
 	var lastRoomID id.RoomID
-	syncer := client.Syncer.(*mautrix.DefaultSyncer)
+	syncer := matrixClient.Syncer.(*mautrix.DefaultSyncer)
 	syncer.OnEventType(event.EventMessage, func(ctx context.Context, evt *event.Event) {
 		eventTime := timestampToTime(evt.Timestamp)
 		if started.After(eventTime) {
+			return
+		}
+		if evt.Sender.String() == user {
 			return
 		}
 		lastRoomID = evt.RoomID
@@ -121,15 +136,25 @@ func main() {
 			Str("id", evt.ID.String()).
 			Str("body", evt.Content.AsMessage().Body).
 			Msg("Received message")
-		/*resp, err := client.SendText(context.TODO(), lastRoomID, "hey")
+
+		chatCompletion, err := openAIClient.Chat.Completions.New(context.TODO(), openai.ChatCompletionNewParams{
+			Messages: []openai.ChatCompletionMessageParamUnion{
+				openai.UserMessage("Say this is a test"),
+			},
+			Model: openai.ChatModelGPT4o,
+		})
+		if err != nil {
+			panic(err.Error())
+		}
+		resp, err := matrixClient.SendText(context.TODO(), lastRoomID, chatCompletion.Choices[0].Message.Content)
 		if err != nil {
 			log.Error().Err(err).Msg("Failed to send event")
 		} else {
 			log.Info().Stringer("event_id", resp.EventID).Msg("Event sent")
-		}*/
+		}
 	})
 
-	resp, err := client.GetOwnDisplayName(context.TODO())
+	resp, err := matrixClient.GetOwnDisplayName(context.TODO())
 	if err != nil {
 		panic(err)
 	}
@@ -139,7 +164,7 @@ func main() {
 	syncStopWait.Add(1)
 
 	go func() {
-		err = client.SyncWithContext(syncCtx)
+		err = matrixClient.SyncWithContext(syncCtx)
 		defer syncStopWait.Done()
 		if err != nil && !errors.Is(err, context.Canceled) {
 			panic(err)
@@ -155,7 +180,7 @@ func main() {
 			time.Sleep(1 * time.Second)
 			continue
 		}
-		/*resp, err := client.SendText(context.TODO(), lastRoomID, "hey")
+		/*resp, err := matrixClient.SendText(context.TODO(), lastRoomID, "hey")
 		if err != nil {
 			log.Error().Err(err).Msg("Failed to send event")
 		} else {

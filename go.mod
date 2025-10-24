@@ -10,6 +10,7 @@ require (
 	github.com/georgysavva/scany/v2 v2.1.4
 	github.com/jackc/pgx/v5 v5.7.6
 	github.com/mattn/go-sqlite3 v1.14.32
+	github.com/openai/openai-go/v3 v3.6.1
 	github.com/pressly/goose/v3 v3.26.0
 	github.com/rs/zerolog v1.34.0
 	github.com/stephenafamo/bob v0.41.1

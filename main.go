@@ -136,7 +136,10 @@ func main() {
 			Str("id", evt.ID.String()).
 			Str("body", evt.Content.AsMessage().Body).
 			Msg("Received message")
-
+		_, err := matrixClient.UserTyping(context.TODO(), lastRoomID, true, 10*time.Second)
+		if err != nil {
+			log.Error().Err(err).Msg("Failed to set typing")
+		}
 		chatCompletion, err := openAIClient.Chat.Completions.New(context.TODO(), openai.ChatCompletionNewParams{
 			Messages: []openai.ChatCompletionMessageParamUnion{
 				openai.UserMessage("Say this is a test"),
@@ -151,6 +154,10 @@ func main() {
 			log.Error().Err(err).Msg("Failed to send event")
 		} else {
 			log.Info().Stringer("event_id", resp.EventID).Msg("Event sent")
+		}
+		_, err = matrixClient.UserTyping(context.TODO(), lastRoomID, false, 1*time.Second)
+		if err != nil {
+			log.Error().Err(err).Msg("Failed to unset typing")
 		}
 	})
 

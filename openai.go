@@ -2,36 +2,44 @@ package main
 
 import (
 	"context"
-	"encoding/json"
+	//"encoding/json"
 	"fmt"
-	"strings"
+	//"strings"
 	"sync"
 
-	"github.com/openai/openai-go/v3"
-	"github.com/openai/openai-go/v3/option"
-	//"github.com/openai/openai-go/v3/shared"
+	"github.com/maruel/genai"
+	//"github.com/maruel/genai/adapters"
+	"github.com/maruel/genai/providers/openaichat"
 )
 
 type OpenAIClient struct {
 	aiRequestChannel  chan AIRequest
 	aiResponseChannel chan AIResponse
-	client            *openai.Client
-	conversations     map[string]openai.ChatCompletionNewParams
-	log               *Logger
+	client            *openaichat.Client
+	//conversations
+	log *Logger
 }
 
-func NewOpenAIClient(logger Logger, apiKey string, aiRequestChannel chan AIRequest, aiResponseChannel chan AIResponse) (*OpenAIClient, error) {
-	openAIClient := openai.NewClient(
+func NewOpenAIClient(logger Logger, ctx context.Context, apiKey string, aiRequestChannel chan AIRequest, aiResponseChannel chan AIResponse) (*OpenAIClient, error) {
+	/*openAIClient := openai.NewClient(
 		option.WithAPIKey(apiKey),
 		option.WithDebugLog(LoggerShim(logger)),
-	)
+	)*/
+	opts := genai.ProviderOptions{
+		Model: genai.ModelCheap,
+	}
+	c, err := openaichat.New(ctx, &opts, nil)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to create genai client: %v", err)
+	}
 	return &OpenAIClient{
 		aiRequestChannel:  aiRequestChannel,
 		aiResponseChannel: aiResponseChannel,
-		client:            &openAIClient,
-		conversations:     make(map[string]openai.ChatCompletionNewParams),
-		log:               &logger,
+		client:            c,
+		//conversations:     make(map[string]openai.ChatCompletionNewParams),
+		log: &logger,
 	}, nil
+
 }
 
 func (c *OpenAIClient) Run(ctx context.Context, waitGroup *sync.WaitGroup) {
@@ -52,7 +60,7 @@ func (c *OpenAIClient) Run(ctx context.Context, waitGroup *sync.WaitGroup) {
 }
 
 func (c *OpenAIClient) continueConversation(ctx context.Context, req AIRequest) error {
-	param, ok := c.conversations[req.RoomID.String()]
+	/*param, ok := c.conversations[req.RoomID.String()]
 	if !ok {
 		c.startConversation(ctx, req)
 		param = c.conversations[req.RoomID.String()]
@@ -92,9 +100,22 @@ func (c *OpenAIClient) continueConversation(ctx context.Context, req AIRequest) 
 		RoomID:  req.RoomID,
 	}
 	c.conversations[req.RoomID.String()] = param
+	return nil*/
+	msgs := genai.Messages{
+		genai.NewTextMessage("Give me a life advice that sounds good but is a bad idea in practice. Answer succinctly."),
+	}
+	res, err := c.client.GenSync(ctx, msgs)
+	if err != nil {
+		return fmt.Errorf("Failed to continue conversation: %v", err)
+	}
+	c.aiResponseChannel <- AIResponse{
+		Message: res.String(),
+		RoomID:  req.RoomID,
+	}
 	return nil
 }
 
+/*
 func (c *OpenAIClient) handleToolCalls(ctx context.Context, req AIRequest, toolCalls []openai.ChatCompletionMessageToolCallUnion) ([]openai.ChatCompletionMessageParamUnion, error) {
 	var results []openai.ChatCompletionMessageParamUnion
 	for _, toolCall := range toolCalls {
@@ -192,3 +213,4 @@ func (c *OpenAIClient) startConversation(ctx context.Context, req AIRequest) {
 	c.log.Info().Str("sender", req.Sender).Msg("Starting conversation")
 	c.conversations[req.RoomID.String()] = param
 }
+*/

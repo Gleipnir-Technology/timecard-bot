@@ -119,10 +119,10 @@ func (c *OpenAIClient) followupFire(ctx context.Context, req AIRequest, duration
 	}
 	msgs, ok := c.conversations[req.RoomID.String()]
 	if !ok {
-		c.log.Warn().Str("room", req.RoomID.String()).Msg("No messages for room")
+		c.log.Warn().Str("room", req.RoomID.String()).Str("elapsed", duration.String()).Msg("No messages for room")
 		return
 	}
-	msgs = append(msgs, genai.NewTextMessage(fmt.Sprintf("<%s time passed>", duration.String())))
+	msgs = append(msgs, genai.NewTextMessage(fmt.Sprintf("<%s passed>", duration.String())))
 	res, err := c.client.GenSync(ctx, msgs)
 	if err != nil {
 		c.log.Error().Str("room", req.RoomID.String()).Err(err).Msg("Failed to continue after timer")
@@ -139,7 +139,7 @@ func (c *OpenAIClient) followupFire(ctx context.Context, req AIRequest, duration
 }
 
 func (c *OpenAIClient) followupSchedule(ctx context.Context, req AIRequest, input *FollowupTimerInput) (string, error) {
-	c.log.Info().Str("room", req.RoomID.String()).Int64("delay", input.DelayInSeconds).Msg("Followup timer fired.")
+	c.log.Info().Str("room", req.RoomID.String()).Int64("delay", input.DelayInSeconds).Msg("Followup timer scheduled.")
 	duration, err := time.ParseDuration(fmt.Sprintf("%ds", input.DelayInSeconds))
 	if err != nil {
 		return "", fmt.Errorf("Failed to parse %d as a valid duration: %v", input.DelayInSeconds, err)
@@ -161,7 +161,7 @@ type SwitchTaskInput struct {
 func (c *OpenAIClient) switchTask(ctx context.Context, req AIRequest, input *SwitchTaskInput) (string, error) {
 	c.log.Info().Str("room", req.RoomID.String()).Str("task", input.TaskName).Msg("Task Switched")
 	c.aiResponseChannel <- AIResponse{
-		Message: fmt.Sprintf("/me 📋 notes task '%s'", input.TaskName),
+		Message: fmt.Sprintf("📋 notes task '%s'", input.TaskName),
 		RoomID:  req.RoomID,
 	}
 
@@ -169,5 +169,14 @@ func (c *OpenAIClient) switchTask(ctx context.Context, req AIRequest, input *Swi
 }
 
 func (c *OpenAIClient) startConversation(ctx context.Context, req AIRequest) genai.Message {
-	return genai.NewTextMessage(fmt.Sprintf("This is a text chat conversation between an employee and a chatbot helping to manage timecards. Messages from the user will start with '(timestamp) user:'. Messages from the bot will start with 'bot:'. Sometimes the user won't say anything for a long time and the chatbot needs to follow-up with them. When time passes, there will be a prompt like '<20 minutes pass>'. The bot should then prompt the user to provide a bit of information about what they've been working on during that time. The bot should be interested to know what the user's goals are at a high level and should pay attention to any difficulties or frustrations the user experiences.\n\n(%s) user: %s\nbot:", req.Timestamp.String(), req.Message))
+	return genai.NewTextMessage(fmt.Sprintf(
+		`This is a text chat conversation between an employee and a chatbot helping to manage timecards.
+		The user's name is '%[1]s'.
+		Messages from the user will start with '(timestamp) %[1]s:'.
+		Messages from the bot will start with 'bot:'.
+		Sometimes the user won't say anything for a long time and the chatbot needs to follow-up with them.
+		When time passes, there will be a prompt like '<200s passed>'.
+		The bot should then prompt the user to provide a bit of information about what they've been working on during that time.
+		The bot should be interested to know what the user's goals are at a high level and should pay attention to any difficulties or frustrations the user experiences.\n\n
+		(%[2]s) user: %[3]s\nbot:`, req.Displayname, req.Timestamp.String(), req.Message))
 }

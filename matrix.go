@@ -14,10 +14,11 @@ import (
 )
 
 type AIRequest struct {
-	Message   string
-	RoomID    id.RoomID
-	Sender    string
-	Timestamp time.Time
+	Displayname string
+	Message     string
+	RoomID      id.RoomID
+	Sender      string
+	Timestamp   time.Time
 }
 
 type AIResponse struct {
@@ -44,6 +45,7 @@ func NewMatrixClient(log Logger, homeserver string, user string, accessToken str
 		panic(err)
 	}
 	matrixClient.Log = log
+	matrixClient.StateStore = mautrix.NewMemoryStateStore()
 	return &MatrixClient{
 		aiRequestChannel:  aiRequestChannel,
 		aiResponseChannel: aiResponseChannel,
@@ -85,24 +87,35 @@ func (m *MatrixClient) onMessage(ctx context.Context, evt *event.Event) {
 	if evt.Sender.String() == m.user {
 		return
 	}
+	profile, err := m.client.GetProfile(ctx, evt.Sender)
+	displayname := "John Doe"
+	if err != nil {
+		displayname = evt.Sender.String()
+	} else if profile.DisplayName != "" {
+		displayname = profile.DisplayName
+	} else {
+		displayname = "Harry Styles"
+	}
 	since := eventTime.Sub(m.started)
 	m.client.Log.Info().
 		Str("sender", evt.Sender.String()).
 		Int64("timestamp", evt.Timestamp).
 		Str("ago", since.String()).
+		Str("name", displayname).
 		Str("type", evt.Type.String()).
 		Str("id", evt.ID.String()).
 		Str("body", evt.Content.AsMessage().Body).
 		Msg("Received message")
-	_, err := m.client.UserTyping(context.TODO(), evt.RoomID, true, 10*time.Second)
+	_, err = m.client.UserTyping(context.TODO(), evt.RoomID, true, 10*time.Second)
 	if err != nil {
 		m.client.Log.Error().Err(err).Msg("Failed to set typing")
 	}
 	m.aiRequestChannel <- AIRequest{
-		Message:   evt.Content.AsMessage().Body,
-		RoomID:    evt.RoomID,
-		Sender:    evt.Sender.String(),
-		Timestamp: eventTime,
+		Displayname: displayname,
+		Message:     evt.Content.AsMessage().Body,
+		RoomID:      evt.RoomID,
+		Sender:      evt.Sender.String(),
+		Timestamp:   eventTime,
 	}
 }
 

@@ -2,13 +2,13 @@ package main
 
 import (
 	"context"
-	//"encoding/json"
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/maruel/genai"
-	//"github.com/maruel/genai/adapters"
+	"github.com/maruel/genai/adapters"
 	"github.com/maruel/genai/providers/openaichat"
 )
 
@@ -21,10 +21,6 @@ type OpenAIClient struct {
 }
 
 func NewOpenAIClient(logger Logger, ctx context.Context, apiKey string, aiRequestChannel chan AIRequest, aiResponseChannel chan AIResponse) (*OpenAIClient, error) {
-	/*openAIClient := openai.NewClient(
-		option.WithAPIKey(apiKey),
-		option.WithDebugLog(LoggerShim(logger)),
-	)*/
 	opts := genai.ProviderOptions{
 		Model: genai.ModelCheap,
 	}
@@ -70,21 +66,73 @@ func (c *OpenAIClient) continueConversation(ctx context.Context, req AIRequest) 
 	}
 
 	c.log.Debug().Msg("Generating response...")
-	res, err := c.client.GenSync(ctx, msgs)
+	opts := genai.OptionsTools{
+		Tools: []genai.ToolDef{
+			{
+				Name:        "followup_timer",
+				Description: "This should be used to indicate that the bot should follow up with the user in the future to check on task progress.",
+				Callback: func(ctx2 context.Context, input *FollowupTimerInput) (string, error) {
+					return c.followupTimer(ctx2, req, input)
+				},
+			}, {
+				Name:        "switch_task",
+				Description: "Any time the user indicates they change tasks this must be called to update the record of what tasks are being done.",
+				Callback: func(ctx2 context.Context, input *SwitchTaskInput) (string, error) {
+					return c.switchTask(ctx2, req, input)
+				},
+			},
+		},
+	}
+
+	res, _, err := adapters.GenSyncWithToolCallLoop(ctx, c.client, msgs, &opts)
 	if err != nil {
 		return fmt.Errorf("Failed to continue conversation: %v", err)
 	}
-	msgs = append(msgs, res.Message)
-	var toSay string = res.String()
-	toSay = strings.Replace(toSay, "bot: ", "", 1)
-	c.log.Info().Msg(res.String())
-	c.aiResponseChannel <- AIResponse{
-		Message: toSay,
-		RoomID:  req.RoomID,
+
+	for _, m := range res {
+		msgs = append(msgs, m)
+		// Empty responses are tool call related.
+		if m.String() == "" {
+		} else {
+			c.log.Info().Str("room", req.RoomID.String()).Msg(m.String())
+			var toSay string = m.String()
+			toSay = strings.Replace(toSay, "bot: ", "", 1)
+			c.aiResponseChannel <- AIResponse{
+				Message: toSay,
+				RoomID:  req.RoomID,
+			}
+		}
 	}
 	c.conversations[req.RoomID.String()] = msgs
 
 	return nil
+}
+
+type FollowupTimerInput struct {
+	Delay time.Duration `json:"delay"`
+}
+
+func (c *OpenAIClient) followupTimer(ctx context.Context, req AIRequest, input *FollowupTimerInput) (string, error) {
+	c.log.Info().Str("room", req.RoomID.String()).Str("delay", input.Delay.String()).Msg("Followup timer fired.")
+	c.aiResponseChannel <- AIResponse{
+		Message: fmt.Sprintf("/me ⌛ followup scheduled '%s'", input.Delay.String()),
+		RoomID:  req.RoomID,
+	}
+	return fmt.Sprintf("Followup timer set for %s in the future", input.Delay.String()), nil
+}
+
+type SwitchTaskInput struct {
+	TaskName string `json:"task_name"`
+}
+
+func (c *OpenAIClient) switchTask(ctx context.Context, req AIRequest, input *SwitchTaskInput) (string, error) {
+	c.log.Info().Str("room", req.RoomID.String()).Str("task", input.TaskName).Msg("Task Switched")
+	c.aiResponseChannel <- AIResponse{
+		Message: fmt.Sprintf("/me 📋 notes task '%s'", input.TaskName),
+		RoomID:  req.RoomID,
+	}
+
+	return fmt.Sprintf("Recorded a switch to task %s at %s", input.TaskName, time.Now().String()), nil
 }
 
 /*
@@ -101,7 +149,7 @@ func (c *OpenAIClient) handleToolCalls(ctx context.Context, req AIRequest, toolC
 			interval := args["interval"].(string)
 			c.log.Info().Str("sender", req.Sender).Str("interval", interval).Msg("Followup scheduled")
 			c.aiResponseChannel <- AIResponse{
-				Message: fmt.Sprintf("/me ⌛ followup scheduled '%s'", interval),
+				Message:
 				RoomID:  req.RoomID,
 			}
 			results = append(results, openai.ToolMessage("followup scheduled", toolCall.ID))
@@ -121,7 +169,7 @@ func (c *OpenAIClient) handleToolCalls(ctx context.Context, req AIRequest, toolC
 			}
 			c.log.Info().Str("sender", req.Sender).Str("description", description).Str("started", started).Msg("User switched tasks")
 			c.aiResponseChannel <- AIResponse{
-				Message: fmt.Sprintf("/me 📋 notes task '%s'", description),
+				Message:
 				RoomID:  req.RoomID,
 			}
 			results = append(results, openai.ToolMessage("task updated", toolCall.ID))
@@ -135,53 +183,4 @@ func (c *OpenAIClient) handleToolCalls(ctx context.Context, req AIRequest, toolC
 
 func (c *OpenAIClient) startConversation(ctx context.Context, req AIRequest) genai.Message {
 	return genai.NewTextMessage(fmt.Sprintf("This is a text chat conversation between an employee and a chatbot helping to manage timecards. Messages from the user will start with '(timestamp) user:'. Messages from the bot will start with 'bot:'. Sometimes the user won't say anything for a long time and the chatbot needs to follow-up with them. When time passes, there will be a prompt like '<20 minutes pass>'. The bot should then prompt the user to provide a bit of information about what they've been working on during that time. The bot should be interested to know what the user's goals are at a high level and should pay attention to any difficulties or frustrations the user experiences.\n\n(%s) user: %s\nbot:", req.Timestamp.String(), req.Message))
-	/*
-			},
-			Model: openai.ChatModelO4Mini,
-			Seed:  openai.Int(1),
-			Tools: []openai.ChatCompletionToolUnionParam{{
-				OfFunction: &openai.ChatCompletionFunctionToolParam{
-					Function: openai.FunctionDefinitionParam{
-						Name:        "switch_task",
-						Description: openai.String("Any time the user indicates they change tasks this must be called to update the record of what tasks are being done."),
-						Parameters: openai.FunctionParameters{
-							"type": "object",
-							"properties": map[string]interface{}{
-								"description": map[string]string{
-									"type": "string",
-								},
-								"started": map[string]string{
-									"format": "date-time",
-									"type":   "string",
-								},
-							},
-							"required": []string{"description"},
-						},
-					},
-				},
-			}, {
-				OfFunction: &openai.ChatCompletionFunctionToolParam{
-					Function: openai.FunctionDefinitionParam{
-						Name:        "followup_timer",
-						Description: openai.String("This should be used to indicate that the bot should follow up with the user in the future to check on task progress."),
-						Parameters: openai.FunctionParameters{
-							"type": "object",
-							"properties": map[string]interface{}{
-								"description": map[string]string{
-									"type": "string",
-								},
-								"interval": map[string]string{
-									"format": "time",
-									"type":   "string",
-								},
-							},
-							"required": []string{"interval"},
-						},
-					},
-				},
-			}},
-		}
-	*/
-
-	//c.log.Info().Str("sender", req.Sender).Msg("Starting conversation")
 }

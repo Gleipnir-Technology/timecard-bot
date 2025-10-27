@@ -75,7 +75,7 @@ func (m *MatrixClient) Run(ctx context.Context, waitGroup *sync.WaitGroup) {
 	syncer.OnEventType(event.EventMessage, m.onMessage)
 	err := m.client.SyncWithContext(ctx)
 	if err != nil && !errors.Is(err, context.Canceled) {
-		panic(err)
+		m.client.Log.Error().Err(err).Msg("Failed to run sync with context.")
 	}
 }
 

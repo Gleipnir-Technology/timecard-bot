@@ -4,7 +4,7 @@ import (
 	"context"
 	//"encoding/json"
 	"fmt"
-	//"strings"
+	"strings"
 	"sync"
 
 	"github.com/maruel/genai"
@@ -16,8 +16,8 @@ type OpenAIClient struct {
 	aiRequestChannel  chan AIRequest
 	aiResponseChannel chan AIResponse
 	client            *openaichat.Client
-	//conversations
-	log *Logger
+	conversations     map[string][]genai.Message
+	log               *Logger
 }
 
 func NewOpenAIClient(logger Logger, ctx context.Context, apiKey string, aiRequestChannel chan AIRequest, aiResponseChannel chan AIResponse) (*OpenAIClient, error) {
@@ -36,8 +36,8 @@ func NewOpenAIClient(logger Logger, ctx context.Context, apiKey string, aiReques
 		aiRequestChannel:  aiRequestChannel,
 		aiResponseChannel: aiResponseChannel,
 		client:            c,
-		//conversations:     make(map[string]openai.ChatCompletionNewParams),
-		log: &logger,
+		conversations:     make(map[string][]genai.Message),
+		log:               &logger,
 	}, nil
 
 }
@@ -60,58 +60,30 @@ func (c *OpenAIClient) Run(ctx context.Context, waitGroup *sync.WaitGroup) {
 }
 
 func (c *OpenAIClient) continueConversation(ctx context.Context, req AIRequest) error {
-	/*param, ok := c.conversations[req.RoomID.String()]
+	msgs, ok := c.conversations[req.RoomID.String()]
 	if !ok {
-		c.startConversation(ctx, req)
-		param = c.conversations[req.RoomID.String()]
-	}
-	param.Messages = append(param.Messages, openai.UserMessage(fmt.Sprintf("(%s) user: %s\n", req.Timestamp.String(), req.Message)))
-	completion, err := c.client.Chat.Completions.New(ctx, param)
-	if err != nil {
-		return fmt.Errorf("Failed to get completion: %v", err)
-	}
-	toolMessages, err := c.handleToolCalls(ctx, req, completion.Choices[0].Message.ToolCalls)
-	if err != nil {
-		return fmt.Errorf("Failed to handle tool calls: %v", err)
-	}
-	if len(toolMessages) > 0 {
-		param.Messages = append(param.Messages, completion.Choices[0].Message.ToParam())
-		for _, msg := range toolMessages {
-			param.Messages = append(param.Messages, msg)
+		msgs = genai.Messages{
+			c.startConversation(ctx, req),
 		}
-		c.log.Debug().Int("count", len(toolMessages)).Msg("Responding to tool request")
-		completion, err = c.client.Chat.Completions.New(ctx, param)
-		if err != nil {
-			return fmt.Errorf("Failed to handle tool calls: %v", err)
-		}
-		param.Messages = append(param.Messages, completion.Choices[0].Message.ToParam())
-		//completion, err = c.client.Chat.Completions.New(ctx, param)
-		//if err != nil {
-		//return fmt.Errorf("Failed to get ongoing completion: %v", err)
-		//}
 	} else {
-		c.log.Debug().Msg("Continuing conversation without tool responses")
-		//param.Messages = append(param.Messages, completion.Choices[0].Message.ToParam())
+		msgs = append(msgs, genai.NewTextMessage(fmt.Sprintf("(%s) user: %s\nbot: ", req.Timestamp.String(), req.Message)))
 	}
-	var toSay string = completion.Choices[0].Message.Content
-	toSay = strings.Replace(toSay, "bot: ", "", 1)
-	c.aiResponseChannel <- AIResponse{
-		Message: toSay,
-		RoomID:  req.RoomID,
-	}
-	c.conversations[req.RoomID.String()] = param
-	return nil*/
-	msgs := genai.Messages{
-		genai.NewTextMessage("Give me a life advice that sounds good but is a bad idea in practice. Answer succinctly."),
-	}
+
+	c.log.Debug().Msg("Generating response...")
 	res, err := c.client.GenSync(ctx, msgs)
 	if err != nil {
 		return fmt.Errorf("Failed to continue conversation: %v", err)
 	}
+	msgs = append(msgs, res.Message)
+	var toSay string = res.String()
+	toSay = strings.Replace(toSay, "bot: ", "", 1)
+	c.log.Info().Msg(res.String())
 	c.aiResponseChannel <- AIResponse{
-		Message: res.String(),
+		Message: toSay,
 		RoomID:  req.RoomID,
 	}
+	c.conversations[req.RoomID.String()] = msgs
+
 	return nil
 }
 
@@ -159,58 +131,57 @@ func (c *OpenAIClient) handleToolCalls(ctx context.Context, req AIRequest, toolC
 	}
 	return results, nil
 }
-
-func (c *OpenAIClient) startConversation(ctx context.Context, req AIRequest) {
-	param := openai.ChatCompletionNewParams{
-		Messages: []openai.ChatCompletionMessageParamUnion{
-			openai.UserMessage("This is a text chat conversation between an employee and a chatbot helping to manage timecards. Messages from the user will start with '(timestamp) user:'. Messages from the bot will start with 'bot:'. Sometimes the user won't say anything for a long time and the chatbot needs to follow-up with them. When time passes, there will be a prompt like '<20 minutes pass>'. The bot should then prompt the user to provide a bit of information about what they've been working on during that time. The bot should be interested to know what the user's goals are at a high level and should pay attention to any difficulties or frustrations the user experiences.\n\n"),
-		},
-		Model: openai.ChatModelO4Mini,
-		Seed:  openai.Int(1),
-		Tools: []openai.ChatCompletionToolUnionParam{{
-			OfFunction: &openai.ChatCompletionFunctionToolParam{
-				Function: openai.FunctionDefinitionParam{
-					Name:        "switch_task",
-					Description: openai.String("Any time the user indicates they change tasks this must be called to update the record of what tasks are being done."),
-					Parameters: openai.FunctionParameters{
-						"type": "object",
-						"properties": map[string]interface{}{
-							"description": map[string]string{
-								"type": "string",
-							},
-							"started": map[string]string{
-								"format": "date-time",
-								"type":   "string",
-							},
-						},
-						"required": []string{"description"},
-					},
-				},
-			},
-		}, {
-			OfFunction: &openai.ChatCompletionFunctionToolParam{
-				Function: openai.FunctionDefinitionParam{
-					Name:        "followup_timer",
-					Description: openai.String("This should be used to indicate that the bot should follow up with the user in the future to check on task progress."),
-					Parameters: openai.FunctionParameters{
-						"type": "object",
-						"properties": map[string]interface{}{
-							"description": map[string]string{
-								"type": "string",
-							},
-							"interval": map[string]string{
-								"format": "time",
-								"type":   "string",
-							},
-						},
-						"required": []string{"interval"},
-					},
-				},
-			},
-		}},
-	}
-
-	c.log.Info().Str("sender", req.Sender).Msg("Starting conversation")
-	c.conversations[req.RoomID.String()] = param
-}
 */
+
+func (c *OpenAIClient) startConversation(ctx context.Context, req AIRequest) genai.Message {
+	return genai.NewTextMessage(fmt.Sprintf("This is a text chat conversation between an employee and a chatbot helping to manage timecards. Messages from the user will start with '(timestamp) user:'. Messages from the bot will start with 'bot:'. Sometimes the user won't say anything for a long time and the chatbot needs to follow-up with them. When time passes, there will be a prompt like '<20 minutes pass>'. The bot should then prompt the user to provide a bit of information about what they've been working on during that time. The bot should be interested to know what the user's goals are at a high level and should pay attention to any difficulties or frustrations the user experiences.\n\n(%s) user: %s\nbot:", req.Timestamp.String(), req.Message))
+	/*
+			},
+			Model: openai.ChatModelO4Mini,
+			Seed:  openai.Int(1),
+			Tools: []openai.ChatCompletionToolUnionParam{{
+				OfFunction: &openai.ChatCompletionFunctionToolParam{
+					Function: openai.FunctionDefinitionParam{
+						Name:        "switch_task",
+						Description: openai.String("Any time the user indicates they change tasks this must be called to update the record of what tasks are being done."),
+						Parameters: openai.FunctionParameters{
+							"type": "object",
+							"properties": map[string]interface{}{
+								"description": map[string]string{
+									"type": "string",
+								},
+								"started": map[string]string{
+									"format": "date-time",
+									"type":   "string",
+								},
+							},
+							"required": []string{"description"},
+						},
+					},
+				},
+			}, {
+				OfFunction: &openai.ChatCompletionFunctionToolParam{
+					Function: openai.FunctionDefinitionParam{
+						Name:        "followup_timer",
+						Description: openai.String("This should be used to indicate that the bot should follow up with the user in the future to check on task progress."),
+						Parameters: openai.FunctionParameters{
+							"type": "object",
+							"properties": map[string]interface{}{
+								"description": map[string]string{
+									"type": "string",
+								},
+								"interval": map[string]string{
+									"format": "time",
+									"type":   "string",
+								},
+							},
+							"required": []string{"interval"},
+						},
+					},
+				},
+			}},
+		}
+	*/
+
+	//c.log.Info().Str("sender", req.Sender).Msg("Starting conversation")
+}
